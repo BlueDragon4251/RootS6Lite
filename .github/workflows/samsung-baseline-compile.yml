@@ -1,0 +1,64 @@
+name: Samsung SM-P613 full stock kernel compile (research ONLY)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-baseline-compile.yml'
+      - 'scripts/compile_samsung_baseline.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross build tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi g++-aarch64-linux-gnu \
+            libssl-dev libelf-dev bc bison flex build-essential \
+            python3 python3-distutils 2to3 file cpio rsync \
+            device-tree-compiler libncurses-dev
+          echo "=== Compiler tools ==="
+          clang-14 --version | head -1
+          aarch64-linux-gnu-gcc --version | head -1
+
+      - name: Download & cryptographically verify real Samsung OSRC archive
+        run: |
+          set -euo pipefail
+          mkdir -p _download _samsung
+          gh release download source-P613XXU4CWL1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern SM-P613_EUR_14_Opensource.zip \
+            --dir _download
+          python3 scripts/verify_samsung_source.py \
+            --archive _download/SM-P613_EUR_14_Opensource.zip \
+            --workdir _samsung --extract-kernel
+          rm -rf _download _samsung/Kernel.tar.gz
+          df -h .
+
+      - name: Compile UNMODIFIED baseline (experimental Clang 14 fallback)
+        run: bash scripts/compile_samsung_baseline.sh "$PWD/_samsung/kernel" "$PWD/_out" "$PWD/_evidence"
+
+      - name: Publish logs, configuration, and raw kernel if built
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SM-P613-COMPILER-EXPERIMENT-NOT-FLASHABLE
+          path: |
+            _evidence/
+            _out/.config
+            _out/arch/arm64/boot/Image
+          if-no-files-found: warn
+          retention-days: 14
