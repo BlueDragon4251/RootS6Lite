@@ -24,6 +24,24 @@ if "print >> sys.stderr" in s:
     p.write_text(s.replace("#! /usr/bin/env python2", "#! /usr/bin/env python3"))
 PY
 
+# Fix two old-style void() definitions in the temporary extracted source.
+# The header prototypes already use void; this keeps the compiler's strict-prototype
+# diagnostics enabled for all other files and does not touch the official ZIP.
+python3 - "$SRC/techpack/audio/4.0/dsp/digital-cdc-rsc-mgr.c" <<'PY'
+import pathlib, sys
+p=pathlib.Path(sys.argv[1])
+s=p.read_text()
+for old,new in [
+    ("void digital_cdc_rsc_mgr_init()", "void digital_cdc_rsc_mgr_init(void)"),
+    ("void digital_cdc_rsc_mgr_exit()", "void digital_cdc_rsc_mgr_exit(void)"),
+]:
+    if s.count(old)!=1:
+        raise SystemExit("Unexpected stock source for: "+old)
+    s=s.replace(old,new)
+p.chmod(p.stat().st_mode | 0o200)
+p.write_text(s)
+PY
+
 export ARCH=arm64
 export PYTHON=python3
 export CROSS_COMPILE=aarch64-linux-gnu-
@@ -33,13 +51,14 @@ export KBUILD_BUILD_HOST=github-actions
 export DTC_EXT=/usr/bin/dtc
 cd "$SRC"
 
-args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -gdwarf-4")
+args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4")
 {
   echo "SOURCE_VERSION=4.14.190"
+  echo "TEMP_SOURCE_CHANGE=Void prototype compatibility on two digital-cdc functions; original Samsung archive unchanged"
   echo "SOURCE_FIRMWARE=P613XXU4CWL1"
   echo "DEVICE_FIRMWARE=P613XXS8CYE1"
   echo "COMPILER_EXPERIMENT=clang-14 (NOT OEM Qualcomm clang-10)"
-  echo "COMPILER_FLAGS=-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -gdwarf-4 (diagnostic compatibility only; warnings are not fixes)"
+  echo "COMPILER_FLAGS=-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4 (diagnostic compatibility only; warnings are not fixes)"
   echo "STOCK_COMPATIBILITY=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
 } > "$EVIDENCE/provenance.txt"
