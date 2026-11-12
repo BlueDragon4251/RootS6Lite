@@ -76,14 +76,20 @@ def main():
         if args.extract_kernel:
             dest = args.workdir / "kernel"
             dest.mkdir(exist_ok=True)
+            import posixpath
             for member in archive.getmembers():
-                path = Path(member.name)
-                if path.is_absolute() or ".." in path.parts:
+                normalized = posixpath.normpath(member.name)
+                if normalized == ".." or normalized.startswith("../") or normalized.startswith("/"):
                     raise SystemExit("Unsafe archive path: " + member.name)
                 if member.issym() or member.islnk():
-                    link = Path(member.linkname)
-                    if link.is_absolute() or ".." in link.parts:
-                        raise SystemExit("Unsafe symlink: " + member.name)
+                    # Kernel sources have legitimate ../../ links within the tree.
+                    # Validate their resolved destination, not raw '..' components.
+                    resolved = posixpath.normpath(
+                        posixpath.join(posixpath.dirname(normalized), member.linkname)
+                        if member.issym() else member.linkname
+                    )
+                    if resolved == ".." or resolved.startswith("../") or resolved.startswith("/"):
+                        raise SystemExit("Symlink escapes source tree: " + member.name)
             archive.extractall(dest)
 
     report = {
