@@ -2,11 +2,18 @@
 # Experimental, NOT FLASHABLE. The device stock kernel is P613XXS8CYE1;
 # Samsung OSRC P613XXU4CWL1 may be older, and Clang 14 is NOT OEM Clang 10.
 set -Eeuo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(realpath "${1:?kernel source directory}")"
 OUT="$(realpath -m "${2:?output directory}")"
 EVIDENCE="$(realpath -m "${3:?evidence directory}")"
 mkdir -p "$OUT" "$EVIDENCE"
 test -f "$SRC/arch/arm64/configs/gta4xlvewifi_eur_open_defconfig"
+
+# Record the as-extracted file hashes so CI-only edits can be audited.
+{
+  sha256sum "$SRC/scripts/gcc-wrapper.py"
+  sha256sum "$SRC/techpack/audio/4.0/dsp/digital-cdc-rsc-mgr.c"
+} > "$EVIDENCE/source-files-before.sha256"
 
 # Samsung ships a Python 2-only gcc-wrapper. Convert it in the ephemeral
 # extracted tree for exploratory GitHub CI; never modify the official ZIP.
@@ -42,12 +49,18 @@ p.chmod(p.stat().st_mode | 0o200)
 p.write_text(s)
 PY
 
+{
+  sha256sum "$SRC/scripts/gcc-wrapper.py"
+  sha256sum "$SRC/techpack/audio/4.0/dsp/digital-cdc-rsc-mgr.c"
+} > "$EVIDENCE/source-files-after.sha256"
+
 export ARCH=arm64
 export PYTHON=python3
 export CROSS_COMPILE=aarch64-linux-gnu-
 export CLANG_TRIPLE=aarch64-linux-gnu-
 export KBUILD_BUILD_USER=roots6lite-ci
 export KBUILD_BUILD_HOST=github-actions
+export KBUILD_BUILD_TIMESTAMP="Thu Jan 1 00:00:00 UTC 1970"
 export DTC_EXT=/usr/bin/dtc
 cd "$SRC"
 
@@ -63,9 +76,26 @@ args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TR
   echo "FLASH_ALLOWED=NO"
 } > "$EVIDENCE/provenance.txt"
 
+# Observe actual binary/package versions. APT packages are NOT yet version pinned.
+{
+  echo "RUNNER_IMAGE=${ImageOS:-unknown} ${ImageVersion:-unknown}"
+  echo "GITHUB_SHA=${GITHUB_SHA:-unknown}"
+  echo "GITHUB_RUN_ID=${GITHUB_RUN_ID:-unknown}"
+  echo "SOURCE_ARCHIVE_SHA256=728e592f5ad856773e093a01adebedb06a5ef2554c85813ae275a842eecb13b7"
+  echo "TOOLCHAIN_VERSION_PINNED=NO"
+  clang-14 --version | head -1
+  aarch64-linux-gnu-gcc --version | head -1
+  arm-linux-gnueabi-gcc --version | head -1
+  ld.lld-14 --version | head -1
+  dtc --version
+  python3 --version
+  dpkg-query -W -f='${Package}=${Version}\n' clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi 2>/dev/null || true
+} > "$EVIDENCE/toolchain-manifest.txt"
+
 echo "=== Generate Samsung config ===" | tee "$EVIDENCE/status.txt"
 make "${args[@]}" gta4xlvewifi_eur_open_defconfig 2>&1 | tee "$EVIDENCE/defconfig.log"
 cp "$OUT/.config" "$EVIDENCE/stock-generated.config"
+sha256sum "$OUT/.config" > "$EVIDENCE/config.sha256"
 grep -F 'CONFIG_KALLSYMS=y' "$OUT/.config"
 grep -F '# CONFIG_KPROBES is not set' "$OUT/.config"
 
@@ -75,6 +105,13 @@ make -j2 "${args[@]}" Image 2>&1 | tee "$EVIDENCE/build.log"
 code=${PIPESTATUS[0]}
 set -e
 echo "BUILD_EXIT_CODE=$code" | tee -a "$EVIDENCE/status.txt"
+python3 "$SCRIPT_DIR/summarize_samsung_build.py" \
+  --log "$EVIDENCE/build.log" --exit-code "$code" \
+  --output-json "$EVIDENCE/build-diagnostics.json" \
+  --output-md "$EVIDENCE/build-diagnostics.md"
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  head -n 100 "$EVIDENCE/build-diagnostics.md" >> "$GITHUB_STEP_SUMMARY"
+fi
 if (( code != 0 )); then
   tail -n 160 "$EVIDENCE/build.log" > "$EVIDENCE/last-160-build-lines.txt"
   exit "$code"

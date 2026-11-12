@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/samsung-baseline-compile.yml'
       - 'scripts/compile_samsung_baseline.sh'
+      - 'scripts/summarize_samsung_build.py'
+      - 'scripts/test_summarize_samsung_build.py'
   workflow_dispatch:
 
 permissions:
@@ -34,6 +36,9 @@ jobs:
           clang-14 --version | head -1
           aarch64-linux-gnu-gcc --version | head -1
 
+      - name: Self-test compiler diagnostic parser
+        run: python3 -m unittest discover -s scripts -p 'test_summarize_samsung_build.py' -v
+
       - name: Download & cryptographically verify real Samsung OSRC archive
         run: |
           set -euo pipefail
@@ -48,7 +53,7 @@ jobs:
           rm -rf _download _samsung/Kernel.tar.gz
           df -h .
 
-      - name: Compile UNMODIFIED baseline (experimental Clang 14 fallback)
+      - name: Compile CI-shimmed Samsung baseline (experimental Clang 14; NOT FLASHABLE)
         run: bash scripts/compile_samsung_baseline.sh "$PWD/_samsung/kernel" "$PWD/_out" "$PWD/_evidence"
 
       - name: Publish logs, configuration, and raw kernel if built
