@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 COMPILER_ERROR = re.compile(r"(?:^|\s)(?:fatal\s+)?error:\s|\bundefined reference to\b")
+WRAPPER_FATAL = re.compile(r"\berror, forbidden warning:\s")
 MAKE_FAILURE = re.compile(r"(?:^|\s)make(?:\[\d+\])?:\s*\*\*|\bError\s+\d+\b")
 ENVIRONMENT_FAILURE = re.compile(
     r"\b(?:No space left on device|out of memory|Killed process|Cannot allocate memory|"
@@ -21,6 +22,8 @@ WARNING = re.compile(r"(?:^|\s)warning:\s")
 
 
 def classify(line):
+    if WRAPPER_FATAL.search(line):
+        return "wrapper_rejected_warning"
     if COMPILER_ERROR.search(line):
         return "compiler_or_linker_error"
     if ENVIRONMENT_FAILURE.search(line):
@@ -35,6 +38,7 @@ def classify(line):
 def summarize(lines, exit_code, max_items=40):
     findings = []
     counts = {
+        "wrapper_rejected_warning": 0,
         "compiler_or_linker_error": 0,
         "environment_error": 0,
         "make_failure_or_cascade": 0,
@@ -46,11 +50,11 @@ def summarize(lines, exit_code, max_items=40):
             continue
         counts[kind] += 1
         if len(findings) < max_items or kind in (
-            "compiler_or_linker_error", "environment_error"
+            "wrapper_rejected_warning", "compiler_or_linker_error", "environment_error"
         ) and sum(f["kind"] == kind for f in findings) < max_items:
             findings.append({"line": number, "kind": kind, "message": line.rstrip()[:1000]})
     significant = [f for f in findings if f["kind"] in (
-        "compiler_or_linker_error", "environment_error"
+        "wrapper_rejected_warning", "compiler_or_linker_error", "environment_error"
     )]
     return {
         "exit_code": exit_code,
@@ -75,7 +79,7 @@ def render_markdown(result, lines):
         "",
         result["interpretation"],
         "",
-        "## First reported compiler, linker or environment error",
+        "## First reported compiler, linker, wrapper or environment error",
         "",
     ]
     first = result["first_reported_error"]

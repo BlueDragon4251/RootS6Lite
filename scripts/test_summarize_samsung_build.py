@@ -26,6 +26,16 @@ class BuildDiagnosticsTests(unittest.TestCase):
         self.assertEqual(classify("bash: xyz: command not found"), "environment_error")
         self.assertEqual(classify("ld.lld: error: undefined symbol: foo"), "compiler_or_linker_error")
 
+    def test_samsung_wrapper_forbidden_warning(self):
+        lines = [
+            "diagmem.c:184:11: warning: cast to smaller integer type",
+            "error, forbidden warning: diagmem.c:184",
+            "make[4]: *** [scripts/Makefile.build:361:diagmem.o] Error 1",
+        ]
+        result = summarize(lines, 2)
+        self.assertEqual(result["first_reported_error"]["kind"], "wrapper_rejected_warning")
+        self.assertEqual(result["counts"]["make_failure_or_cascade"], 1)
+
     def test_empty_log_and_nonzero_exit(self):
         result = summarize([], 137)
         self.assertEqual(result["exit_code"], 137)

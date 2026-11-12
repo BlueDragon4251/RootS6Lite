@@ -13,6 +13,7 @@ test -f "$SRC/arch/arm64/configs/gta4xlvewifi_eur_open_defconfig"
 {
   sha256sum "$SRC/scripts/gcc-wrapper.py"
   sha256sum "$SRC/techpack/audio/4.0/dsp/digital-cdc-rsc-mgr.c"
+  sha256sum "$SRC/drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_top/cam_vfe_fe_ver1.c"
 } > "$EVIDENCE/source-files-before.sha256"
 
 # Samsung ships a Python 2-only gcc-wrapper. Convert it in the ephemeral
@@ -49,9 +50,26 @@ p.chmod(p.stat().st_mode | 0o200)
 p.write_text(s)
 PY
 
+# Qualcomm camera code truncates a pointer when passing the CPAS handle.
+# Use its first uint32_t element instead, after the 2020 compiler fix by
+# Nick Desaulniers. This is a CI-only semantic change, not a stock binary.
+# Verify the exact known source pattern, rather than patch arbitrary code.
+python3 - "$SRC/drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_top/cam_vfe_fe_ver1.c" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text()
+old = "cam_cpas_reg_read((uint32_t)soc_private->cpas_handle,"
+new = "cam_cpas_reg_read(soc_private->cpas_handle[0],"
+if s.count(old) != 2:
+    raise SystemExit(f"Unexpected camera source: expected 2 casts, got {s.count(old)}")
+p.chmod(p.stat().st_mode | 0o200)
+p.write_text(s.replace(old, new))
+PY
+
 {
   sha256sum "$SRC/scripts/gcc-wrapper.py"
   sha256sum "$SRC/techpack/audio/4.0/dsp/digital-cdc-rsc-mgr.c"
+  sha256sum "$SRC/drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_top/cam_vfe_fe_ver1.c"
 } > "$EVIDENCE/source-files-after.sha256"
 
 export ARCH=arm64
@@ -67,7 +85,7 @@ cd "$SRC"
 args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4")
 {
   echo "SOURCE_VERSION=4.14.190"
-  echo "TEMP_SOURCE_CHANGE=Void prototype compatibility on two digital-cdc functions; original Samsung archive unchanged"
+  echo "TEMP_SOURCE_CHANGE=Python2 wrapper, two digital-cdc void prototypes, two camera CPAS pointer-to-handle casts (CI-only); original Samsung archive unchanged"
   echo "SOURCE_FIRMWARE=P613XXU4CWL1"
   echo "DEVICE_FIRMWARE=P613XXS8CYE1"
   echo "COMPILER_EXPERIMENT=clang-14 (NOT OEM Qualcomm clang-10)"
