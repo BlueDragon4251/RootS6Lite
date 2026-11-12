@@ -33,12 +33,13 @@ export KBUILD_BUILD_HOST=github-actions
 export DTC_EXT=/usr/bin/dtc
 cd "$SRC"
 
-args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y)
+args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="-Wno-unused-but-set-variable -gdwarf-4")
 {
   echo "SOURCE_VERSION=4.14.190"
   echo "SOURCE_FIRMWARE=P613XXU4CWL1"
   echo "DEVICE_FIRMWARE=P613XXS8CYE1"
   echo "COMPILER_EXPERIMENT=clang-14 (NOT OEM Qualcomm clang-10)"
+  echo "COMPILER_FLAGS=-Wno-unused-but-set-variable -gdwarf-4 (diagnostic compatibility only)"
   echo "STOCK_COMPATIBILITY=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
 } > "$EVIDENCE/provenance.txt"
