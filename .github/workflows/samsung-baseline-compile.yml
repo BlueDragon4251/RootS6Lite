@@ -79,5 +79,7 @@ jobs:
             _evidence/
             _out/.config
             _out/arch/arm64/boot/Image
+            _out/arch/arm64/boot/dts/**/*.dtb
+            _out/**/*.ko
           if-no-files-found: warn
           retention-days: 14
