@@ -1,6 +1,10 @@
 name: Official Samsung OSRC source audit (NOT FLASHABLE)
 
 on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-source-audit.yml'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -21,7 +25,7 @@ jobs:
       - name: Download official Samsung source from release asset
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TAG: ${{ inputs.release_tag || 'source-P613XXU4CWL1' }}
         run: |
           set -euo pipefail
           mkdir -p samsung-download samsung-audit
