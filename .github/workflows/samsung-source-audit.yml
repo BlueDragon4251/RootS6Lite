@@ -5,6 +5,7 @@ on:
     branches: [agent/kernel-foundation]
     paths:
       - '.github/workflows/samsung-source-audit.yml'
+      - 'scripts/verify_samsung_source.py'
   workflow_dispatch:
     inputs:
       release_tag:
