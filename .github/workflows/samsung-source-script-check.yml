@@ -1,0 +1,32 @@
+name: Samsung source verifier self-test
+on:
+  push:
+    branches: [main, agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-source-*.yml'
+      - 'scripts/verify_samsung_source.py'
+      - 'docs/SAMSUNG_SOURCE.md'
+  pull_request:
+    paths:
+      - '.github/workflows/samsung-source-*.yml'
+      - 'scripts/verify_samsung_source.py'
+      - 'docs/SAMSUNG_SOURCE.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check source verifier syntax and pinned expected metadata
+        run: |
+          python3 -m py_compile scripts/verify_samsung_source.py
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, 'scripts')
+          from verify_samsung_source import ZIP_SHA, KERNEL_SHA, FILES
+          assert len(ZIP_SHA) == len(KERNEL_SHA) == 64
+          assert len(FILES) == 3
+          print('Verifier self-test passed')
+          PY
