@@ -74,7 +74,11 @@ PY
 
 export ARCH=arm64
 export PYTHON=python3
-export CROSS_COMPILE=aarch64-linux-gnu-
+# Samsung's own build_kernel.sh specifies this Android GCC 4.9 prefix.  The
+# workflow obtains an AOSP copy at a pinned commit and verifies its ld.bfd
+# SHA256 before invoking this script.  The current Clang 14 frontend remains
+# experimental; this restores only the documented Android 4.9 binutils path.
+export CROSS_COMPILE="${ANDROID_GCC49_PREFIX:?ANDROID_GCC49_PREFIX must name the verified Android GCC 4.9 aarch64 prefix}"
 export CLANG_TRIPLE=aarch64-linux-gnu-
 export KBUILD_BUILD_USER=roots6lite-ci
 export KBUILD_BUILD_HOST=github-actions
@@ -82,21 +86,20 @@ export KBUILD_BUILD_TIMESTAMP="Thu Jan 1 00:00:00 UTC 1970"
 export DTC_EXT=/usr/bin/dtc
 cd "$SRC"
 
-# The Samsung ARM64 Makefile links a relocatable kernel with -shared.  The
-# Ubuntu 22.04 aarch64 GNU ld (binutils 2.38) rejects the source's ABS32
-# MODVERSIONS relocation in gsi.o in that mode.  Use the installed LLD 14
-# explicitly for this experiment rather than silently falling back to GNU ld.
-# This is still an experimental linker substitution, not an OEM-equivalent
-# toolchain or a flash approval.
-test -x /usr/bin/ld.lld-14
-args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 LD=ld.lld-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4")
+# Both Ubuntu binutils 2.38 and LLD 14 reject the source's non-PIC ABS32
+# MODVERSIONS CRC relocation during its intentional ARM64 -shared link.  The
+# Samsung recipe specifies Android GCC 4.9; use its pinned ld.bfd rather than
+# changing CONFIG_MODVERSIONS or rewriting the exported-symbol ABI.
+test -x "${CROSS_COMPILE}ld"
+"${CROSS_COMPILE}ld" --version | grep -F 'GNU ld (binutils-2.27-bd24d23f)' >/dev/null
+args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4")
 {
   echo "SOURCE_VERSION=4.14.190"
   echo "TEMP_SOURCE_CHANGE=Python2 wrapper, two digital-cdc void prototypes, two camera CPAS pointer-to-handle casts (CI-only); original Samsung archive unchanged"
   echo "SOURCE_FIRMWARE=P613XXU4CWL1"
   echo "DEVICE_FIRMWARE=P613XXS8CYE1"
-  echo "COMPILER_EXPERIMENT=clang-14 + lld-14 (NOT OEM Qualcomm clang-10 / linker)"
-  echo "LINKER_SELECTION=ld.lld-14; required because Ubuntu GNU ld 2.38 rejected R_AARCH64_ABS32 in the relocatable CONFIG_MODVERSIONS link"
+  echo "COMPILER_EXPERIMENT=clang-14 frontend (NOT OEM Qualcomm clang-10) + verified AOSP Android GCC 4.9 binutils linker"
+  echo "LINKER_SELECTION=${CROSS_COMPILE}ld (AOSP Android GCC 4.9 commit 606f80986096476912e04e5c2913685a8f2c3b65; ld.bfd SHA256 2a663de4ce3d702fe3f2a0de48cac366be676f850c2f5732d9cc2e4acb9335e2)"
   echo "COMPILER_FLAGS=-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4 (diagnostic compatibility only; warnings are not fixes)"
   echo "STOCK_COMPATIBILITY=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
@@ -108,11 +111,9 @@ args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TR
   echo "GITHUB_SHA=${GITHUB_SHA:-unknown}"
   echo "GITHUB_RUN_ID=${GITHUB_RUN_ID:-unknown}"
   echo "SOURCE_ARCHIVE_SHA256=728e592f5ad856773e093a01adebedb06a5ef2554c85813ae275a842eecb13b7"
-  echo "TOOLCHAIN_VERSION_PINNED=NO"
+  echo "TOOLCHAIN_VERSION_PINNED=PARTIAL (Android GCC 4.9 binutils pinned; Clang 14 APT package still not OEM/pinned)"
   clang-14 --version | head -1
-  aarch64-linux-gnu-gcc --version | head -1
-  arm-linux-gnueabi-gcc --version | head -1
-  ld.lld-14 --version | head -1
+  "${CROSS_COMPILE}ld" --version | head -1
   dtc --version
   python3 --version
   dpkg-query -W -f='${Package}=${Version}\n' clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi 2>/dev/null || true

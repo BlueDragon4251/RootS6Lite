@@ -27,7 +27,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu \
+            clang-14 llvm-14 gcc-aarch64-linux-gnu \
             gcc-arm-linux-gnueabi g++-aarch64-linux-gnu \
             libssl-dev libelf-dev bc bison flex build-essential \
             python3 python3-distutils 2to3 file cpio rsync \
@@ -53,8 +53,22 @@ jobs:
           rm -rf _download _samsung/Kernel.tar.gz
           df -h .
 
-      - name: Compile CI-shimmed Samsung baseline (experimental Clang 14; NOT FLASHABLE)
-        run: bash scripts/compile_samsung_baseline.sh "$PWD/_samsung/kernel" "$PWD/_out" "$PWD/_evidence"
+      - name: Fetch and verify Android GCC 4.9 binutils required by Samsung build recipe
+        run: |
+          set -euo pipefail
+          readonly TOOLCHAIN_REPO='https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9'
+          readonly TOOLCHAIN_BRANCH='android-msm-coral-4.14-android12-qpr1'
+          readonly TOOLCHAIN_COMMIT='606f80986096476912e04e5c2913685a8f2c3b65'
+          readonly LD_BFD_SHA256='2a663de4ce3d702fe3f2a0de48cac366be676f850c2f5732d9cc2e4acb9335e2'
+          git clone --depth 1 --branch "$TOOLCHAIN_BRANCH" "$TOOLCHAIN_REPO" _toolchains/android-gcc-4.9
+          test "$(git -C _toolchains/android-gcc-4.9 rev-parse HEAD)" = "$TOOLCHAIN_COMMIT"
+          echo "$LD_BFD_SHA256  _toolchains/android-gcc-4.9/bin/aarch64-linux-android-ld.bfd" | sha256sum -c -
+          _toolchains/android-gcc-4.9/bin/aarch64-linux-android-ld --version | head -1
+
+      - name: Compile CI-shimmed Samsung baseline (experimental Clang 14 + Android GCC 4.9 linker; NOT FLASHABLE)
+        run: |
+          export ANDROID_GCC49_PREFIX="$PWD/_toolchains/android-gcc-4.9/bin/aarch64-linux-android-"
+          bash scripts/compile_samsung_baseline.sh "$PWD/_samsung/kernel" "$PWD/_out" "$PWD/_evidence"
 
       - name: Publish logs, configuration, and raw kernel if built
         if: always()
