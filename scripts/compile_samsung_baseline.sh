@@ -13,6 +13,7 @@ test -f "$SRC/arch/arm64/configs/gta4xlvewifi_eur_open_defconfig"
 python3 - "$SRC/scripts/gcc-wrapper.py" <<'PY'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
+p.chmod(p.stat().st_mode | 0o200)  # Samsung tar marks this file read-only
 s = p.read_text()
 if "print >> sys.stderr" in s:
     from lib2to3.refactor import RefactoringTool, get_fixers_from_package
