@@ -13,6 +13,11 @@ from pathlib import Path
 
 COMPILER_ERROR = re.compile(r"(?:^|\s)(?:fatal\s+)?error:\s|\bundefined reference to\b")
 WRAPPER_FATAL = re.compile(r"\berror, forbidden warning:\s")
+LINKER_FAILURE = re.compile(
+    r"(?:\b(?:ld|ld\.lld|aarch64-linux-gnu-ld):.*\b(?:relocation|linker script|"
+    r"dangerous relocation)|\brelocation truncated to fit:|\bdangerous relocation:)",
+    re.I,
+)
 MAKE_FAILURE = re.compile(r"(?:^|\s)make(?:\[\d+\])?:\s*\*\*|\bError\s+\d+\b")
 ENVIRONMENT_FAILURE = re.compile(
     r"\b(?:No space left on device|out of memory|Killed process|Cannot allocate memory|"
@@ -24,6 +29,8 @@ WARNING = re.compile(r"(?:^|\s)warning:\s")
 def classify(line):
     if WRAPPER_FATAL.search(line):
         return "wrapper_rejected_warning"
+    if LINKER_FAILURE.search(line):
+        return "linker_error"
     if COMPILER_ERROR.search(line):
         return "compiler_or_linker_error"
     if ENVIRONMENT_FAILURE.search(line):
@@ -39,6 +46,7 @@ def summarize(lines, exit_code, max_items=40):
     findings = []
     counts = {
         "wrapper_rejected_warning": 0,
+        "linker_error": 0,
         "compiler_or_linker_error": 0,
         "environment_error": 0,
         "make_failure_or_cascade": 0,
@@ -50,11 +58,11 @@ def summarize(lines, exit_code, max_items=40):
             continue
         counts[kind] += 1
         if len(findings) < max_items or kind in (
-            "wrapper_rejected_warning", "compiler_or_linker_error", "environment_error"
+            "wrapper_rejected_warning", "linker_error", "compiler_or_linker_error", "environment_error"
         ) and sum(f["kind"] == kind for f in findings) < max_items:
             findings.append({"line": number, "kind": kind, "message": line.rstrip()[:1000]})
     significant = [f for f in findings if f["kind"] in (
-        "wrapper_rejected_warning", "compiler_or_linker_error", "environment_error"
+        "wrapper_rejected_warning", "linker_error", "compiler_or_linker_error", "environment_error"
     )]
     return {
         "exit_code": exit_code,

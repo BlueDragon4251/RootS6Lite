@@ -26,6 +26,16 @@ class BuildDiagnosticsTests(unittest.TestCase):
         self.assertEqual(classify("bash: xyz: command not found"), "environment_error")
         self.assertEqual(classify("ld.lld: error: undefined symbol: foo"), "compiler_or_linker_error")
 
+    def test_binutils_relocation_is_a_linker_error(self):
+        lines = [
+            "aarch64-linux-gnu-ld: drivers/platform/msm/gsi/gsi.o: relocation R_AARCH64_ABS32 against `__crc_gsi_write_channel_scratch' can not be used when making a shared object",
+            "security/selinux/hooks.o: relocation truncated to fit: R_AARCH64_ADR_PREL_PG_HI21 against `.bss.rtic'",
+            "make[1]: *** [Makefile:1197: vmlinux] Error 1",
+        ]
+        result = summarize(lines, 2)
+        self.assertEqual(result["first_reported_error"]["kind"], "linker_error")
+        self.assertEqual(result["counts"]["linker_error"], 2)
+
     def test_samsung_wrapper_forbidden_warning(self):
         lines = [
             "diagmem.c:184:11: warning: cast to smaller integer type",

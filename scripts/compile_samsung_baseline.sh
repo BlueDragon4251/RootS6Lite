@@ -82,13 +82,21 @@ export KBUILD_BUILD_TIMESTAMP="Thu Jan 1 00:00:00 UTC 1970"
 export DTC_EXT=/usr/bin/dtc
 cd "$SRC"
 
-args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4")
+# The Samsung ARM64 Makefile links a relocatable kernel with -shared.  The
+# Ubuntu 22.04 aarch64 GNU ld (binutils 2.38) rejects the source's ABS32
+# MODVERSIONS relocation in gsi.o in that mode.  Use the installed LLD 14
+# explicitly for this experiment rather than silently falling back to GNU ld.
+# This is still an experimental linker substitution, not an OEM-equivalent
+# toolchain or a flash approval.
+test -x /usr/bin/ld.lld-14
+args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 LD=ld.lld-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4")
 {
   echo "SOURCE_VERSION=4.14.190"
   echo "TEMP_SOURCE_CHANGE=Python2 wrapper, two digital-cdc void prototypes, two camera CPAS pointer-to-handle casts (CI-only); original Samsung archive unchanged"
   echo "SOURCE_FIRMWARE=P613XXU4CWL1"
   echo "DEVICE_FIRMWARE=P613XXS8CYE1"
-  echo "COMPILER_EXPERIMENT=clang-14 (NOT OEM Qualcomm clang-10)"
+  echo "COMPILER_EXPERIMENT=clang-14 + lld-14 (NOT OEM Qualcomm clang-10 / linker)"
+  echo "LINKER_SELECTION=ld.lld-14; required because Ubuntu GNU ld 2.38 rejected R_AARCH64_ABS32 in the relocatable CONFIG_MODVERSIONS link"
   echo "COMPILER_FLAGS=-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4 (diagnostic compatibility only; warnings are not fixes)"
   echo "STOCK_COMPATIBILITY=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
