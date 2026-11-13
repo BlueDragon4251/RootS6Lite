@@ -70,6 +70,16 @@ jobs:
           set -e
           echo "FDTO_OVERLAY_EXIT_CODE=$code" | tee _audit/status.txt
           sed -n '1,160p' _audit/fdtoverlay.log
+          echo '=== Overlay top-level nodes ==='
+          fdtget -l "$overlay" / | head -n 40 || true
+          echo '=== Fragment 0 target (raw) ==='
+          fdtget -t x "$overlay" '/fragment@0' target || true
+          fdtget -t s "$overlay" '/fragment@0' target-path || true
+          echo '=== Overlay fixup sections ==='
+          fdtget -p "$overlay" /__fixups__ | head -n 20 || true
+          fdtget -p "$overlay" /__local_fixups__ | head -n 20 || true
+          echo '=== Base has symbols? ==='
+          fdtget -p "$base" /__symbols__ | head -n 8 || true
           if (( code != 0 )); then
             echo 'Libfdt overlay application failed; no flash compatibility is claimed.'
             exit "$code"
