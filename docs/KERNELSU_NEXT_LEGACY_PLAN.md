@@ -222,3 +222,25 @@ been located for *provenance research only* and **is not integrated, cached,
 redistributed or trusted as an official binary**. A verified, appropriately
 licensed compiler package and matching exact-toolchain baseline build remain
 outstanding compatibility gates. **FLASH_ALLOWED=NO**.
+
+### 2026-11-13 — Samsung Open Source Release Center listing checked
+
+The device owner directly searched Samsung's official Open Source Release
+Center for `SM-P613` and supplied a screenshot of **all three results**:
+
+| Source listing firmware | Region / archive | Android |
+| --- | --- | --- |
+| `P613XXU2BWD1` | `SM-P613_EUR_13_Opensource.zip`, also `SM-P613_EUR_13_Opensource_P613XXU3BWG4.zip` | 13 |
+| `P613KOU4CWL1` | `SM-P613_KOR_14_Opensource.zip` | 14 |
+| `P613XXU4CWL1` | `SM-P613_EUR_14_Opensource.zip` | 14 |
+
+**No listing for target `P613XXS8CYE1` or a later EUR Android 14
+kernel source** was visible in the complete `SM-P613` search result.
+This is a listing observation, not proof that Samsung cannot provide
+corresponding sources through a direct request or an unlisted package.
+The next high-priority external dependency is an official corresponding-source
+request through the portal's **Inquiry** function: target kernel
+`4.14.190-perf-28683246-abP613XXS8CYE1`, firmware CYE1, and Qualcomm
+SDLLVM 10.0.7. Do not infer ABI compatibility from the older CWL1 KOR source
+or introduce a third-party proprietary toolchain while waiting for an official
+response. `FLASH_ALLOWED=NO`.
