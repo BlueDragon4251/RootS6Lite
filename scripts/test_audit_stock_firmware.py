@@ -4,7 +4,8 @@ import struct
 import unittest
 
 from audit_stock_firmware import (FDT_MAGIC, boot_layout_metadata, boot_payload_metadata,
-                                  fdt_metadata, parse_boot, parse_dtbo, scan_embedded_fdts)
+                                  embedded_ikconfig_metadata, fdt_metadata, parse_boot,
+                                  parse_dtbo, scan_embedded_fdts)
 
 
 def synthetic_fdt():
@@ -102,6 +103,25 @@ class TestStockAudit(unittest.TestCase):
         self.assertEqual(result["decompressed_sha256"], hashlib.sha256(raw).hexdigest())
         self.assertTrue(result["arm64_image_magic"])
         self.assertEqual(result["embedded_linux_release"], "4.14.190-perf-test")
+
+    def test_embedded_kernel_config_hash_and_selected_abi_flags(self):
+        config = (b'CONFIG_LOCALVERSION="-perf"\n'
+                  b'# CONFIG_KPROBES is not set\n'
+                  b'CONFIG_MODVERSIONS=y\n'
+                  b'CONFIG_MODULE_SIG_FORCE=y\n'
+                  b'CONFIG_UNRELATED_SECRET=do-not-export\n')
+        image = b"other bytes" + b"IKCFG_ST" + gzip.compress(config, mtime=0) + b"IKCFG_ED"
+        result = embedded_ikconfig_metadata(image)
+        self.assertEqual(result["status"], "found")
+        self.assertEqual(result["sha256"], hashlib.sha256(config).hexdigest())
+        self.assertEqual(result["selected"]["CONFIG_KPROBES"], "n")
+        self.assertEqual(result["selected"]["CONFIG_MODULE_SIG_FORCE"], "y")
+        self.assertNotIn("CONFIG_UNRELATED_SECRET", result["selected"])
+
+    def test_invalid_ikconfig_is_reported_not_exposed(self):
+        self.assertEqual(embedded_ikconfig_metadata(b"IKCFG_STinvalidIKCFG_ED")["status"],
+                         "invalid-gzip-ikconfig")
+        self.assertEqual(embedded_ikconfig_metadata(b"other data")["status"], "not-found")
 
     def test_android_v2_recovery_table_and_dtb_layout(self):
         fdt = synthetic_fdt()
