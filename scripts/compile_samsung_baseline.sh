@@ -147,6 +147,19 @@ fi
 test -s "$OUT/arch/arm64/boot/Image"
 sha256sum "$OUT/arch/arm64/boot/Image" >> "$EVIDENCE/provenance.txt"
 
+# Research reproducibility: CONFIG_MODULE_SIG enables a newly generated
+# X.509 key pair in each clean build. Export ONLY public cert metadata.
+# Never publish the ephemeral private key.
+SIGNING_KEY="$OUT/certs/signing_key.pem"
+if [[ -s "$SIGNING_KEY" ]]; then
+  openssl x509 -in "$SIGNING_KEY" -outform DER -out "$EVIDENCE/ci-ephemeral-signing-cert.der"
+  openssl x509 -inform DER -in "$EVIDENCE/ci-ephemeral-signing-cert.der" -noout -fingerprint -sha256 > "$EVIDENCE/module-signing-cert.txt"
+  sha256sum "$EVIDENCE/ci-ephemeral-signing-cert.der" >> "$EVIDENCE/module-signing-cert.txt"
+  echo "MODULE_SIGNING_CERT=ephemeral public X.509 certificate only; private key NOT exported" >> "$EVIDENCE/provenance.txt"
+else
+  echo "MODULE_SIGNING_CERT=NOT_FOUND_AT_EXPECTED_OUTPUT_PATH; requires investigation" >> "$EVIDENCE/provenance.txt"
+fi
+
 # The Samsung Wi-Fi EUR board uses an atoll-ab-idp base DTB plus its own
 # GTA4XLVEWIFI revision-00 DTBO. A generic base DTB alone is not sufficient.
 BASE_DTB="arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb"
@@ -199,5 +212,33 @@ base_compat="$(fdtget -t s "$OUT/$BASE_DTB" / compatible)"
   echo "DTB_DTBO_ABI_MATCH_WITH_STOCK=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
 } > "$EVIDENCE/device-tree-metadata.txt"
+
+# A libfdt smoke test that applies the Samsung Wi-Fi EUR overlay to its
+# compiled Qualcomm base. It is NOT proof of the stock firmware DTBO/ABI.
+MERGED_DTB="$EVIDENCE/NONFLASHABLE-overlay-application-test.dtb"
+fdtoverlay -i "$OUT/$BASE_DTB" -o "$MERGED_DTB" "$OUT/$DEVICE_DTBO" > "$EVIDENCE/dtbo-overlay-apply.log" 2>&1
+test -s "$MERGED_DTB"
+merged_compat="$(fdtget -t s "$MERGED_DTB" / compatible)"
+[[ "$merged_compat" == *"qcom,atoll-ab-idp"* ]]
+sha256sum "$MERGED_DTB" > "$EVIDENCE/overlay-application.sha256"
+{
+  echo "OVERLAY_APPLY=SUCCESS (libfdt; compiled source pair only)"
+  echo "MERGED_COMPATIBLE=$merged_compat"
+  echo "STOCK_DTBO_MATCH=UNVERIFIED"
+  echo "FLASH_ALLOWED=NO"
+} > "$EVIDENCE/overlay-application-metadata.txt"
+
+# make modules outputs may be unsigned until modules_install, although
+# the stock config requires signatures. Record the trailer status.
+module_sig='NOT_APPLICABLE'
+if grep -Fqx 'CONFIG_MODULE_SIG_FORCE=y' "$OUT/.config"; then
+  module_sig='UNKNOWN'
+  if LC_ALL=C tail -c 64 "$OUT/${modules[0]}" | grep -aqF "Module signature appended"; then
+    module_sig='PRESENT_IN_FIRST_MODULE'
+  else
+    module_sig='ABSENT_IN_FIRST_MODULE'
+  fi
+fi
+echo "MODULE_SIGNATURE_TRAILER=$module_sig" >> "$EVIDENCE/provenance.txt"
 printf 'DTB_COUNT=%s\nDTBO_COUNT=%s\nMODULE_COUNT=%s\n' "${#dtbs[@]}" "${#dtbos[@]}" "${#modules[@]}" | tee -a "$EVIDENCE/status.txt"
 echo "Image, DTBs, DTBOs and modules compiled, but NEVER FLASH: actual stock DTBO/ABI and physical boot remain unverified." | tee -a "$EVIDENCE/status.txt"
