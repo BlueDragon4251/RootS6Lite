@@ -192,6 +192,58 @@ printf '%s\n' "${modules[@]}" > "$EVIDENCE/module-files.txt"
   sha256sum "${modules[@]}"
 ) > "$EVIDENCE/modules.sha256"
 
+# Stock and research Kconfig enforce signed modules. The output-tree .ko
+# files produced by "make modules" are intentionally unsigned: this vintage
+# Samsung Makefile invokes sign-file during "make modules_install" instead.
+# Install into a separate staging tree using the matching ephemeral CI key;
+# never publish signing_key.pem or claim the resulting modules match stock.
+grep -Fqx 'CONFIG_MODULE_SIG=y' "$OUT/.config"
+grep -Fqx 'CONFIG_MODULE_SIG_ALL=y' "$OUT/.config"
+grep -Fqx 'CONFIG_MODULE_SIG_FORCE=y' "$OUT/.config"
+test -s "$SIGNING_KEY"
+SIGNED_ROOT="$(realpath -m "$(dirname "$OUT")/_signed_modules")"
+mkdir -p "$SIGNED_ROOT"
+echo "=== Install and sign research modules (separate nonflashable staging) ===" | tee -a "$EVIDENCE/status.txt"
+set +e
+make -j2 "${args[@]}" INSTALL_MOD_PATH="$SIGNED_ROOT" modules_install 2>&1 | tee "$EVIDENCE/modules-install.log"
+install_code=${PIPESTATUS[0]}
+set -e
+echo "MODULES_INSTALL_EXIT_CODE=$install_code" | tee -a "$EVIDENCE/status.txt"
+if (( install_code != 0 )); then
+  tail -n 100 "$EVIDENCE/modules-install.log" > "$EVIDENCE/last-100-modules-install-lines.txt"
+  exit "$install_code"
+fi
+mapfile -t signed_modules < <(cd "$SIGNED_ROOT" && find . -type f -name '*.ko' -printf '%P\n' | sort)
+[[ "${#signed_modules[@]}" -eq "${#modules[@]}" ]]
+printf '%s\n' "${signed_modules[@]}" > "$EVIDENCE/signed-module-files.txt"
+(
+  cd "$SIGNED_ROOT"
+  sha256sum "${signed_modules[@]}"
+) > "$EVIDENCE/signed-modules.sha256"
+{
+  echo "SIGNED_MODULES_STAGING=RESEARCH_ONLY_NOT_FLASHABLE"
+  echo "MODULE_SIG_FORCE=y"
+  echo "SIGNED_MODULE_COUNT=${#signed_modules[@]}"
+  echo "SIGNING_PRIVATE_KEY=NOT_PUBLISHED"
+} > "$EVIDENCE/signed-modules-metadata.txt"
+for mod in "${signed_modules[@]}"; do
+  path="$SIGNED_ROOT/$mod"
+  if ! LC_ALL=C tail -c 28 "$path" | grep -aqFx '~Module signature appended~'; then
+    echo "::error::Missing kernel module signature trailer: $mod"
+    exit 1
+  fi
+  signer="$(modinfo -F signer "$path")"
+  sig_key="$(modinfo -F sig_key "$path")"
+  sig_hash="$(modinfo -F sig_hashalgo "$path")"
+  if [[ -z "$signer" || -z "$sig_key" || "$sig_hash" != "sha512" ]]; then
+    echo "::error::Unexpected module signature metadata: $mod signer=$signer key=$sig_key hash=$sig_hash"
+    exit 1
+  fi
+  printf '%s\t%s\t%s\t%s\n' "$mod" "$signer" "$sig_key" "$sig_hash" >> "$EVIDENCE/signed-module-signers.tsv"
+done
+echo "SIGNED_MODULE_COUNT=${#signed_modules[@]}" | tee -a "$EVIDENCE/status.txt"
+echo "SIGNED_MODULES=EPHEMERAL_RESEARCH_KEY_ONLY_STOCK_COMPATIBILITY_UNVERIFIED" >> "$EVIDENCE/provenance.txt"
+
 # Read actual compiled FDT properties; fail if the board overlay or matching
 # Qualcomm base is absent/wrong. This is a provenance check, NOT boot proof.
 model="$(fdtget -t s "$OUT/$DEVICE_DTBO" / model)"
@@ -256,4 +308,4 @@ if grep -Fqx 'CONFIG_MODULE_SIG_FORCE=y' "$OUT/.config"; then
 fi
 echo "MODULE_SIGNATURE_TRAILER=$module_sig" >> "$EVIDENCE/provenance.txt"
 printf 'DTB_COUNT=%s\nDTBO_COUNT=%s\nMODULE_COUNT=%s\n' "${#dtbs[@]}" "${#dtbos[@]}" "${#modules[@]}" | tee -a "$EVIDENCE/status.txt"
-echo "Image, DTBs, DTBOs and modules compiled, but NEVER FLASH: actual stock DTBO/ABI and physical boot remain unverified." | tee -a "$EVIDENCE/status.txt"
+echo "Image, DTBs, DTBOs and signed research modules compiled, but NEVER FLASH: stock module ABI and physical boot remain unverified." | tee -a "$EVIDENCE/status.txt"
