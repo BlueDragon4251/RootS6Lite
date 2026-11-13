@@ -52,3 +52,18 @@ The same full build log contains **881 DTC warning lines**: `avoid_default_addr_
 6. Only after technical validation, perform a controlled physical boot test with verified original `boot.img` recovery available.
 
 No Odin package or flash-ready image should be generated from these research outputs.
+
+## Standard libfdt merge diagnostic — 2026-11-13
+
+[Full compile Run 43368653577](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43368653577) finished `make Image dtbs modules` with `BUILD_EXIT_CODE=0`, but the new **post-build** `fdtoverlay` smoke test rejected the compiled Samsung overlay with `FDT_ERR_BADOVERLAY`. This is not a compiler error and not a physical-boot result.
+
+[Artifact-only audit Run 43372773879](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43372773879) and [instrumented libfdt 1.6.1 Run 43372601554](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43372601554) narrowed the failure to `overlay_update_local_references` in libfdt. [Run 43372773879](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43372773879) pinpointed the missing property lookup (libfdt `LOCAL_BADOVERLAY_LINE=250`, `tree_node=13856`, `fixup_node=158648`).
+
+Read-only parsing of the saved binary FDT structure maps these offsets to:
+- libfdt-selected tree node: `/fragment@6/__overlay__/qcom,dsi-display@0`, with `label`, `qcom,dsi-*` and `phandle`, but **no** `pinctrl-0`.
+- local fixup node: `/__local_fixups__/fragment@6/__overlay__/qcom,dsi-display`, whose properties include `pinctrl-0`, `pinctrl-1` and `qcom,dsi-display-list`.
+- The Samsung overlay contains **seven siblings**: `qcom,dsi-display@0` through `@5`, plus `qcom,dsi-display` without a unit address.
+
+The standard libfdt child-name lookup for `qcom,dsi-display` can select the first `qcom,dsi-display@0` sibling when applying local fixups. This explains the observed `FDT_ERR_BADOVERLAY` without implying that the Android/Qualcomm bootloader uses identical overlay semantics. All 161 external overlay fixup label names resolved against the compiled base's `__symbols__`; no missing fragment targets were found. **Do not silently change Samsung's FDT source or claim stock compatibility.**
+
+Next: compare the overlay using Android's `libufdt` implementation and with the original `P613XXS8CYE1` boot-chain DTBO. Treat standard `fdtoverlay` as a separate diagnostic; preserve its failure record and mark `FLASH_ALLOWED=NO`.
