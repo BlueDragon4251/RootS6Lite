@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Offline, read-only stock firmware metadata collector for SM-P613.
 
-No firmware bytes or private data are uploaded. Output contains file SHA256,
-boot header fields and DTB/DTBO hardware identifiers only. Python 3 stdlib.
+No firmware bytes or private data are uploaded. Output contains file and
+embedded DTB/DTBO SHA256, boot header fields and hardware identifiers only.
+Python 3 stdlib.
 """
 
 from __future__ import annotations
@@ -95,6 +96,7 @@ def fdt_metadata(data: bytes, offset: int = 0) -> dict:
         return [f"0x{be32(raw, i):x}" for i in range(0, len(raw), 4)] if raw and len(raw) % 4 == 0 else []
 
     return {
+        "sha256": hashlib.sha256(data[offset : offset + total]).hexdigest(),
         "fdt_total_bytes": total,
         "model": text_prop("model"),
         "compatible": text_prop("compatible"),
@@ -184,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     if not any([a.boot, a.recovery, a.dtbo]):
         p.error("specify at least one of --boot, --recovery or --dtbo")
-    report = {"audit_schema": 1, "mode": "read-only / offline / metadata only",
+    report = {"audit_schema": 2, "mode": "read-only / offline / metadata only",
               "caution": "Build compatibility and bootability cannot be inferred from these hashes alone.",
               "files": {}}
     try:
