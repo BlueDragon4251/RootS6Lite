@@ -154,3 +154,18 @@ The actual resulting binary also independently passes [embedded ELF layout valid
 The authentic Samsung `README_Kernel.txt` recipe calls for the old Qualcomm `toolchain/llvm-arm-toolchain-ship/10.0/bin/clang` rather than generic upstream `clang`. Qualcomm's [official Snapdragon LLVM Compiler page](https://www.qualcomm.com/developer/software/snapdragon-llvm-compiler) presents a **login-to-download** route; it does not demonstrate that the exact Samsung-era `llvm-arm-toolchain-ship/10.0` release, revision, or cryptographic digest is available for an unattended, reproducible GitHub Actions build. Qualcomm's [2026 CPULLVM announcement](https://www.qualcomm.com/developer/blog/2026/04/announcing-an-open-source-llvm-toolchain-for-snapdragon-cpus-mcus) describes a new open-source LLVM 22-era family, **not a drop-in replacement for the historical proprietary Qualcomm Clang 10**. Do not invent an OEM toolchain SHA or obtain unsigned executables from arbitrary mirrors.
 
 **Compiler gate remains open**. The pinned official **AOSP Clang 10** CI control proves a reproducible comparison and internal 12,559-export CRC reference, but not original CYE1 OEM ABI, exact `vermagic`, image equality, or boot compatibility. The research kernel and its ten newly signed modules cannot inherit trust from Samsung's inaccessible OEM signing key. `FLASH_ALLOWED=NO`.
+
+
+### Remaining warnings classified from actual full KSU log
+
+Read the complete successful [KSU A/B run 43415010034](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43415010034) job log, **not just its green status**. The log has 84 `warning:`/`WARNING:`-matched lines; many are repeated in separate Kconfig passes. The following distinct root causes remain tracked:
+
+- `drivers/ccic/Kconfig` and `drivers/Kconfig`: unsupported source characters (likely original CR characters, needs byte-level verification), repeated; do not silently drop Kconfig content.
+- `drivers/samsung/debug/Kconfig`: conflicting `SEC_DEBUG` tristate/boolean definition and unsupported choice-value defaults; Samsung source Kconfig semantics require investigation.
+- Host `scripts/extract-cert.c`/`sign-file.c`: OpenSSL 3 deprecated `ENGINE_*`/`ERR_get_error_line` calls on Ubuntu 22.04; these are host-tool API compatibility warnings, not evidence that module signatures are accepted on the tablet.
+- Host `security/samsung/defex_lsm/pack_rules.c:444`: `strncpy` possible truncation of an 8,126-character input into the fixed 4,096-byte integrity field; exact DEFEX rule format/expected maximum must be proven before changing the rule packer.
+- `MODPOST`: `gsi_write_channel_scratch` version generation failed twice and remains the sole zero-CRC exported symbol in research controls. OEM behavior is unknown.
+- Legacy Android GCC4.9 linker: `-z noseparate-code ignored` for the preinit runner. The extracted real runner passed static AArch64 ELF, entry, `PT_LOAD` 4K/64K congruence and non-executable-stack checks; runtime execution remains unverified.
+- Node `punycode` and `url.parse()` deprecations arise in GitHub's artifact-upload action runtime; classify separately from kernel compilation.
+
+No warning above is designated harmless or silently suppressed. All are either an explicit source/platform compatibility item, host-tool issue or a runtime gate. `FLASH_ALLOWED=NO`.
