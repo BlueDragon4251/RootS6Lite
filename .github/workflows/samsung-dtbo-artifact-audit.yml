@@ -92,6 +92,21 @@ jobs:
           echo '=== Reference base label values ==='
           fdtget -t s "$base" /__symbols__ mdss_mdp || true
           fdtget -t s "$base" /__symbols__ tlmm || true
+          echo '=== Fragment target audit ==='
+          all_fixups=''
+          while read -r key; do
+            all_fixups+=" $(fdtget -t s "$overlay" /__fixups__ "$key")"
+          done < <(fdtget -p "$overlay" /__fixups__)
+          while read -r frag; do
+            case "$frag" in fragment@*) ;; *) continue ;; esac
+            if phandle="$(fdtget -t x "$overlay" "/$frag" target 2>/dev/null)"; then
+              if [[ "$phandle" == 'ffffffff' && "$all_fixups" != *"/$frag:target:0"* ]]; then
+                echo "FRAGMENT_UNRESOLVED_PLACEHOLDER=$frag"
+              fi
+            elif ! fdtget -t s "$overlay" "/$frag" target-path >/dev/null 2>&1; then
+              echo "FRAGMENT_MISSING_TARGET=$frag"
+            fi
+          done < <(fdtget -l "$overlay" /)
           if (( code != 0 )); then
             echo 'Libfdt overlay application failed; no flash compatibility is claimed.'
             exit "$code"
