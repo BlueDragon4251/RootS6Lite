@@ -201,6 +201,14 @@ if [[ "${ROOTS6_KSU_RESEARCH:-0}" == "1" ]]; then
   grep -Fqx 'CONFIG_FIVE=y' "$OUT/.config"
   grep -Fqx 'CONFIG_PROCA=y' "$OUT/.config"
   grep -Fqx 'CONFIG_PROCA_S_OS=y' "$OUT/.config"
+  # KernelSU Next embeds its early preinit runner only when installed kernel
+  # UAPI headers exist in $(objtree)/usr/include.  This Samsung 4.14 tree
+  # does not install them as part of an ordinary Image build, so stage them
+  # explicitly for this opt-in research build (never for the stock baseline).
+  echo '=== Install kernel UAPI headers for KernelSU Next preinit ===' | tee -a "$EVIDENCE/status.txt"
+  make "${args[@]}" headers_install 2>&1 | tee "$EVIDENCE/ksu-headers-install.log"
+  test -s "$OUT/usr/include/linux/unistd.h"
+  echo 'KSU_PREINIT_UAPI_HEADERS=STAGED_FOR_EXPERIMENT' | tee -a "$EVIDENCE/status.txt"
   cp "$OUT/.config" "$EVIDENCE/ksu-legacy-research.config"
   sha256sum "$OUT/.config" >> "$EVIDENCE/ksu-manual-hooks-provenance.txt"
   echo 'KSU_LEGACY_MANUAL_HOOKS=SOURCE_PATCHED_CONFIGURED_UNTESTED' | tee -a "$EVIDENCE/status.txt"
@@ -229,6 +237,13 @@ fi
 test -s "$OUT/arch/arm64/boot/Image"
 test -s "$OUT/Module.symvers"
 test -s "$OUT/System.map"
+if [[ "${ROOTS6_KSU_RESEARCH:-0}" == "1" ]]; then
+  # Check the *linked* vmlinux symbol map, not only source-level hook strings
+  # or an enabled Kconfig switch.  This is not evidence of boot/root behavior.
+  python3 "$SCRIPT_DIR/verify_kernelsu_research_symbols.py" \
+    --config "$OUT/.config" --system-map "$OUT/System.map" \
+    --report "$EVIDENCE/ksu-linked-symbols-audit.json" | tee -a "$EVIDENCE/status.txt"
+fi
 sha256sum "$OUT/arch/arm64/boot/Image" >> "$EVIDENCE/provenance.txt"
 # The authenticated P613XXS8CYE1 boot and recovery use the *same* decompressed
 # Image. Compare it explicitly, but a mismatch alone is not evidence of a
