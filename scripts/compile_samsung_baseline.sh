@@ -184,6 +184,30 @@ grep -F 'CONFIG_KALLSYMS=y' "$OUT/.config"
 grep -F '# CONFIG_KPROBES is not set' "$OUT/.config"
 echo "STOCK_SECURITY_PROFILE=FIVE_y_PROCA_y_PROCA_S_OS_y_TZIC_n" | tee -a "$EVIDENCE/status.txt"
 
+if [[ "${ROOTS6_KSU_RESEARCH:-0}" == "1" ]]; then
+  echo '=== Opt-in pinned KernelSU Next Legacy experimental integration: NOT FLASHABLE ===' | tee -a "$EVIDENCE/status.txt"
+  KSU_UPSTREAM_ROOT="$(realpath "${ROOTS6_KSU_UPSTREAM_ROOT:?pinned upstream root required}")"
+  test "$(git -C "$KSU_UPSTREAM_ROOT" rev-parse HEAD)" = 'e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a'
+  python3 "$SCRIPT_DIR/integrate_kernelsu_next_research.py" \
+    --source "$SRC" --upstream "$KSU_UPSTREAM_ROOT" \
+    --manifest "$EVIDENCE/ksu-manual-hooks-provenance.txt"
+  "$SRC/scripts/config" --file "$OUT/.config" --enable KSU --enable KSU_MANUAL_HOOK
+  make "${args[@]}" olddefconfig 2>&1 | tee "$EVIDENCE/ksu-legacy-olddefconfig.log"
+  grep -Fqx 'CONFIG_KSU=y' "$OUT/.config"
+  grep -Fqx 'CONFIG_KSU_MANUAL_HOOK=y' "$OUT/.config"
+  grep -Fqx '# CONFIG_KPROBES is not set' "$OUT/.config"
+  grep -Fqx 'CONFIG_MODULE_SIG_FORCE=y' "$OUT/.config"
+  grep -Fqx 'CONFIG_SECURITY_SELINUX=y' "$OUT/.config"
+  grep -Fqx 'CONFIG_FIVE=y' "$OUT/.config"
+  grep -Fqx 'CONFIG_PROCA=y' "$OUT/.config"
+  grep -Fqx 'CONFIG_PROCA_S_OS=y' "$OUT/.config"
+  cp "$OUT/.config" "$EVIDENCE/ksu-legacy-research.config"
+  sha256sum "$OUT/.config" >> "$EVIDENCE/ksu-manual-hooks-provenance.txt"
+  echo 'KSU_LEGACY_MANUAL_HOOKS=SOURCE_PATCHED_CONFIGURED_UNTESTED' | tee -a "$EVIDENCE/status.txt"
+  echo 'KSU_UPSTREAM_LEGACY_COMMIT=e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a' >> "$EVIDENCE/provenance.txt"
+  echo 'KSU_RESEARCH_ONLY=YES; STOCK_BASELINE_FLASH_APPROVAL=NO' >> "$EVIDENCE/provenance.txt"
+fi
+
 echo "=== Build Samsung Image, DTBs, and modules (compiler investigation) ===" | tee -a "$EVIDENCE/status.txt"
 set +e
 make -j2 "${args[@]}" Image dtbs modules 2>&1 | tee "$EVIDENCE/build.log"
