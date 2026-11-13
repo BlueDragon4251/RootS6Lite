@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Experimental, NOT FLASHABLE. The device stock kernel is P613XXS8CYE1;
-# Samsung OSRC P613XXU4CWL1 may be older, and Clang 14 is NOT OEM Clang 10.
+# Samsung OSRC P613XXU4CWL1 may be older; neither APT Clang 14 nor
+# pinned AOSP Clang 10 is Samsung's proprietary Qualcomm Clang 10.
 set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(realpath "${1:?kernel source directory}")"
@@ -92,15 +93,39 @@ cd "$SRC"
 # changing CONFIG_MODVERSIONS or rewriting the exported-symbol ABI.
 test -x "${CROSS_COMPILE}ld"
 "${CROSS_COMPILE}ld" --version | grep -F 'GNU ld (binutils-2.27-bd24d23f)' >/dev/null
-args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC=clang-14 DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4")
+# Explicit research compiler profiles: flags supported by Clang 14 must not
+# be passed silently to Clang 10, and removed flags are not code fixes.
+COMPILER_PROFILE="${SAMSUNG_COMPILER_PROFILE:-apt-clang14}"
+case "$COMPILER_PROFILE" in
+  apt-clang14)
+    REAL_COMPILER=clang-14
+    KCFLAGS_PROFILE="-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4"
+    COMPILER_DESCRIPTION="APT Clang 14 (NOT OEM Qualcomm Clang 10)"
+    PINNING_STATUS="PARTIAL (Android GCC 4.9 pinned; Clang 14 APT package unpinned)"
+    ;;
+  aosp-clang10)
+    REAL_COMPILER="${AOSP_CLANG10_BINARY:?AOSP_CLANG10_BINARY must point to pinned AOSP clang-r370808/bin/clang}"
+    test -x "$REAL_COMPILER"
+    "$REAL_COMPILER" --version | grep -F 'clang version 10.0.1' >/dev/null
+    KCFLAGS_PROFILE="-Wno-pragma-pack -gdwarf-4"
+    COMPILER_DESCRIPTION="AOSP Android 11 Clang r370808 v10.0.1 commit 252aba16f513a857bc923172f67b0e55e23de35f (NOT OEM Qualcomm)"
+    PINNING_STATUS="PARTIAL (AOSP Clang 10 + Android GCC 4.9 pinned; runner dependencies unpinned; not OEM)"
+    ;;
+  *)
+    echo "::error::Unknown SAMSUNG_COMPILER_PROFILE: $COMPILER_PROFILE" >&2
+    exit 2
+    ;;
+esac
+args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC="$REAL_COMPILER" DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="$KCFLAGS_PROFILE")
 {
   echo "SOURCE_VERSION=4.14.190"
   echo "TEMP_SOURCE_CHANGE=Python2 wrapper, two digital-cdc void prototypes, two camera CPAS pointer-to-handle casts (CI-only); original Samsung archive unchanged"
   echo "SOURCE_FIRMWARE=P613XXU4CWL1"
   echo "DEVICE_FIRMWARE=P613XXS8CYE1"
-  echo "COMPILER_EXPERIMENT=clang-14 frontend (NOT OEM Qualcomm clang-10) + verified AOSP Android GCC 4.9 binutils linker"
+  echo "COMPILER_EXPERIMENT=$COMPILER_DESCRIPTION + verified AOSP Android GCC 4.9 binutils linker"
   echo "LINKER_SELECTION=${CROSS_COMPILE}ld (AOSP Android GCC 4.9 commit 606f80986096476912e04e5c2913685a8f2c3b65; ld.bfd SHA256 2a663de4ce3d702fe3f2a0de48cac366be676f850c2f5732d9cc2e4acb9335e2)"
-  echo "COMPILER_FLAGS=-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4 (diagnostic compatibility only; warnings are not fixes)"
+  echo "COMPILER_PROFILE=$COMPILER_PROFILE"
+  echo "COMPILER_FLAGS=$KCFLAGS_PROFILE (diagnostic compatibility only; warnings are not fixes)"
   echo "STOCK_CONFIG_PROFILE=CYE1_FIVE_PROCA_S_OS (generated from CWL1 + Kconfig olddefconfig)"
   echo "STOCK_COMPATIBILITY=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
@@ -112,8 +137,12 @@ args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TR
   echo "GITHUB_SHA=${GITHUB_SHA:-unknown}"
   echo "GITHUB_RUN_ID=${GITHUB_RUN_ID:-unknown}"
   echo "SOURCE_ARCHIVE_SHA256=728e592f5ad856773e093a01adebedb06a5ef2554c85813ae275a842eecb13b7"
-  echo "TOOLCHAIN_VERSION_PINNED=PARTIAL (Android GCC 4.9 binutils pinned; Clang 14 APT package still not OEM/pinned)"
-  clang-14 --version | head -1
+  echo "TOOLCHAIN_VERSION_PINNED=$PINNING_STATUS"
+  "$REAL_COMPILER" --version | head -1
+  echo "REAL_COMPILER=$REAL_COMPILER"
+  if [[ "$COMPILER_PROFILE" == aosp-clang10 ]]; then
+    sha256sum "$REAL_COMPILER"
+  fi
   "${CROSS_COMPILE}ld" --version | head -1
   dtc --version
   python3 --version
