@@ -1,0 +1,277 @@
+{
+  "FLASH_ALLOWED": "NO",
+  "KERNEL_BOOT": "NOT_TESTED",
+  "OEM_MODULE_LOADING": "NOT_TESTED",
+  "RESEARCH_CONTROL": "PINNED_AOSP_CLANG10_SAMSUNG_OSRC_CWL1",
+  "SOURCE": "AUTHENTICATED_CYE1_RAW_ARM64_IMAGE",
+  "changed_named_export_crcs": [
+    {
+      "group": "normal",
+      "name": "find_get_booster",
+      "research_crc": "0x08fc4911",
+      "stock_crc": "0x5f090fad"
+    },
+    {
+      "group": "normal",
+      "name": "get_booster",
+      "research_crc": "0xfea8f896",
+      "stock_crc": "0x6d26b46d"
+    },
+    {
+      "group": "normal",
+      "name": "get_cable_type",
+      "research_crc": "0xbd9d19aa",
+      "stock_crc": "0x9fea120d"
+    },
+    {
+      "group": "normal",
+      "name": "get_hw_param",
+      "research_crc": "0x498a9838",
+      "stock_crc": "0x35f19bb7"
+    },
+    {
+      "group": "normal",
+      "name": "get_notify_data",
+      "research_crc": "0x72b15050",
+      "stock_crc": "0x5978f7be"
+    },
+    {
+      "group": "normal",
+      "name": "get_otg_notify",
+      "research_crc": "0x0db4676e",
+      "stock_crc": "0xc19ece31"
+    },
+    {
+      "group": "normal",
+      "name": "get_typec_status",
+      "research_crc": "0x5ce66d5a",
+      "stock_crc": "0x586608c3"
+    },
+    {
+      "group": "normal",
+      "name": "get_usb_mode",
+      "research_crc": "0xf975b7a4",
+      "stock_crc": "0xe8b54613"
+    },
+    {
+      "group": "normal",
+      "name": "inc_hw_param",
+      "research_crc": "0x904cfcac",
+      "stock_crc": "0xc9a90750"
+    },
+    {
+      "group": "normal",
+      "name": "inc_hw_param_host",
+      "research_crc": "0x2da4ec31",
+      "stock_crc": "0x2add4d87"
+    },
+    {
+      "group": "normal",
+      "name": "is_blocked",
+      "research_crc": "0xd6c01747",
+      "stock_crc": "0x3e430f9b"
+    },
+    {
+      "group": "normal",
+      "name": "is_snkdfp_usb_device_connected",
+      "research_crc": "0xf6c3cf18",
+      "stock_crc": "0x66354af6"
+    },
+    {
+      "group": "normal",
+      "name": "is_usb_host",
+      "research_crc": "0xf7920386",
+      "stock_crc": "0x31cdfbcb"
+    },
+    {
+      "group": "normal",
+      "name": "put_otg_notify",
+      "research_crc": "0x578f9068",
+      "stock_crc": "0xce179cd8"
+    },
+    {
+      "group": "normal",
+      "name": "register_booster",
+      "research_crc": "0xfc208db3",
+      "stock_crc": "0x23fe53cb"
+    },
+    {
+      "group": "normal",
+      "name": "register_hw_param_manager",
+      "research_crc": "0x553a1ae2",
+      "stock_crc": "0x8b4ecdc8"
+    },
+    {
+      "group": "normal",
+      "name": "register_ovc_func",
+      "research_crc": "0x275f463a",
+      "stock_crc": "0x0c8e29d9"
+    },
+    {
+      "group": "normal",
+      "name": "sec_bat_set_temp_control_test",
+      "research_crc": "0xca666556",
+      "stock_crc": "0xf7f4f5c3"
+    },
+    {
+      "group": "normal",
+      "name": "send_otg_notify",
+      "research_crc": "0x09f2e5a6",
+      "stock_crc": "0xbaa35f49"
+    },
+    {
+      "group": "normal",
+      "name": "send_usb_notify_uevent",
+      "research_crc": "0x5b92e51a",
+      "stock_crc": "0xf1e3724a"
+    },
+    {
+      "group": "normal",
+      "name": "set_notify_data",
+      "research_crc": "0x9b06fe22",
+      "stock_crc": "0x7142f955"
+    },
+    {
+      "group": "normal",
+      "name": "set_otg_notify",
+      "research_crc": "0xe9e5e3f8",
+      "stock_crc": "0xfb999010"
+    },
+    {
+      "group": "GPL",
+      "name": "usb_notify_dev_register",
+      "research_crc": "0xddae3759",
+      "stock_crc": "0x896b6871"
+    },
+    {
+      "group": "GPL",
+      "name": "usb_notify_dev_uevent",
+      "research_crc": "0x9f3a0919",
+      "stock_crc": "0x8b9f84ed"
+    },
+    {
+      "group": "GPL",
+      "name": "usb_notify_dev_unregister",
+      "research_crc": "0x6a7609de",
+      "stock_crc": "0xcc786dd0"
+    }
+  ],
+  "gpl_crc_values_matching_research": 4919,
+  "gpl_group_count_stock": 4922,
+  "new_stock_exports": [
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "check_eu_eco_full_status",
+      "stock_crc": "0x52b77593"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "check_eu_eco_rechg_ui_condition",
+      "stock_crc": "0x49c03ebc"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "check_usb_restrict_lock_state",
+      "stock_crc": "0x246dcaaa"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "check_usbaudio",
+      "stock_crc": "0xe215d0c8"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "check_usbgroup",
+      "stock_crc": "0x93ef299f"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "detect_illegal_condition",
+      "stock_crc": "0xc508ef70"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "disconnect_unauthorized_device",
+      "stock_crc": "0xedbf4630"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "enable_usb_notify",
+      "stock_crc": "0xf38d8586"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "get_con_dev_max_speed",
+      "stock_crc": "0x5e3296d2"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "get_full_capacity",
+      "stock_crc": "0x4ca58c53"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "is_dwc3_msm_probe_done",
+      "stock_crc": "0xa0460287"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "is_eu_eco_rechg",
+      "stock_crc": "0xd874775d"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "is_full_capacity",
+      "stock_crc": "0x2eda21a6"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "is_usbhub",
+      "stock_crc": "0xa7255d7f"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "sb_full_soc_init",
+      "stock_crc": "0xdf6f8cb6"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "sec_bat_check_full_capacity",
+      "stock_crc": "0x3126bace"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "sec_bat_recov_full_capacity",
+      "stock_crc": "0x4872e5d1"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "send_usb_restrict_uevent",
+      "stock_crc": "0x16acb013"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "set_con_dev_hub",
+      "stock_crc": "0x2d7bd375"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "set_con_dev_max_speed",
+      "stock_crc": "0xfae96c04"
+    },
+    {
+      "group": "normal (inferred and GPL cross-checked)",
+      "name": "usb_check_allowlist_for_lockscreen_enabled_id",
+      "stock_crc": "0x085ed39a"
+    }
+  ],
+  "normal_group_count_stock": 7608,
+  "reference_symvers_sha256": "a76b277bee7a6a8ccd30468b9233401887aea66ee049a39a67901f87dac5cd94",
+  "removed_stock_exports": [],
+  "research_builtin_export_count": 12509,
+  "stock_builtin_export_count": 12530,
+  "stock_crc_table_offset": 38509672,
+  "stock_image_sha256": "14defad3fe7854da3cadc43b2c01e96a48a27a4a0e847043c989c45c66fb8228",
+  "stock_kstrtab_offset": 38559792,
+  "unchanged_named_export_crcs": 12484
+}
