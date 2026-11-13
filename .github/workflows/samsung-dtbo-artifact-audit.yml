@@ -80,6 +80,18 @@ jobs:
           fdtget -p "$overlay" /__local_fixups__ | head -n 20 || true
           echo '=== Base has symbols? ==='
           fdtget -p "$base" /__symbols__ | head -n 8 || true
+          echo '=== Unresolved symbol labels from Samsung overlay ==='
+          while read -r key; do
+            if ! fdtget -t s "$base" /__symbols__ "$key" >/dev/null 2>&1; then
+              echo "BASE_MISSING_LABEL=$key"
+            fi
+          done < <(fdtget -p "$overlay" /__fixups__)
+          echo '=== Reference fragment fixup strings ==='
+          fdtget -t s "$overlay" /__fixups__ mdss_mdp || true
+          fdtget -t s "$overlay" /__fixups__ tlmm || true
+          echo '=== Reference base label values ==='
+          fdtget -t s "$base" /__symbols__ mdss_mdp || true
+          fdtget -t s "$base" /__symbols__ tlmm || true
           if (( code != 0 )); then
             echo 'Libfdt overlay application failed; no flash compatibility is claimed.'
             exit "$code"
