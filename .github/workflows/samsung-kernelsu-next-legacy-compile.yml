@@ -1,0 +1,182 @@
+name: Samsung SM-P613 KernelSU Next LEGACY manual-hook compile (RESEARCH ONLY, NOT FLASHABLE)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-kernelsu-next-legacy-compile.yml'
+      - 'scripts/compile_samsung_baseline.sh'
+      - 'scripts/integrate_kernelsu_next_research.py'
+      - 'scripts/verify_oem_cye1_abi.py'
+      - 'scripts/test_verify_oem_cye1_abi.py'
+      - 'docs/CYE1_STOCK_EXPORT_ABI.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross build tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            llvm-14 gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi g++-aarch64-linux-gnu \
+            libssl-dev libelf-dev bc bison flex build-essential \
+            python3 python3-distutils 2to3 file cpio rsync \
+            device-tree-compiler libncurses-dev kmod
+          echo "=== Compiler tools ==="
+          echo "AOSP Clang 10 will be retrieved from a pinned commit"
+          aarch64-linux-gnu-gcc --version | head -1
+
+      - name: Self-test compiler diagnostic parser
+        run: python3 -m unittest discover -s scripts -p 'test_summarize_samsung_build.py' -v
+
+      - name: Self-test KernelSU linked-symbol and preinit-ELF auditors
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_research_symbols.py' -v
+          python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_preinit_elf.py' -v
+
+      - name: Self-test authenticated OEM CYE1 ABI verifier
+        run: python3 -m unittest discover -s scripts -p 'test_verify_oem_cye1_abi.py' -v
+
+      - name: Download & cryptographically verify real Samsung OSRC archive
+        run: |
+          set -euo pipefail
+          mkdir -p _download _samsung
+          gh release download source-P613XXU4CWL1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern SM-P613_EUR_14_Opensource.zip \
+            --dir _download
+          python3 scripts/verify_samsung_source.py \
+            --archive _download/SM-P613_EUR_14_Opensource.zip \
+            --workdir _samsung --extract-kernel
+          rm -rf _download _samsung/Kernel.tar.gz
+          df -h .
+
+      - name: Fetch and verify Android GCC 4.9 binutils required by Samsung build recipe
+        run: |
+          set -euo pipefail
+          readonly TOOLCHAIN_REPO='https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9'
+          readonly TOOLCHAIN_BRANCH='android-msm-coral-4.14-android12-qpr1'
+          readonly TOOLCHAIN_COMMIT='606f80986096476912e04e5c2913685a8f2c3b65'
+          readonly LD_BFD_SHA256='2a663de4ce3d702fe3f2a0de48cac366be676f850c2f5732d9cc2e4acb9335e2'
+          git clone --depth 1 --branch "$TOOLCHAIN_BRANCH" "$TOOLCHAIN_REPO" _toolchains/android-gcc-4.9
+          test "$(git -C _toolchains/android-gcc-4.9 rev-parse HEAD)" = "$TOOLCHAIN_COMMIT"
+          echo "$LD_BFD_SHA256  _toolchains/android-gcc-4.9/bin/aarch64-linux-android-ld.bfd" | sha256sum -c -
+          _toolchains/android-gcc-4.9/bin/aarch64-linux-android-ld --version | head -1
+
+      - name: Fetch pinned AOSP Android 11 Clang r370808 (10.0.1; NOT Samsung Qualcomm OEM)
+        run: |
+          set -euo pipefail
+          readonly REPO='https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86'
+          readonly TAG='refs/tags/android-11.0.0_r3'
+          readonly EXPECTED_COMMIT='252aba16f513a857bc923172f67b0e55e23de35f'
+          readonly DIR='_toolchains/aosp-clang10'
+          mkdir -p "$DIR"
+          git -C "$DIR" init
+          git -C "$DIR" remote add origin "$REPO"
+          git -C "$DIR" sparse-checkout init --cone
+          git -C "$DIR" sparse-checkout set clang-r370808
+          git -C "$DIR" -c protocol.version=2 fetch --depth 1 --filter=blob:none origin "$TAG"
+          test "$(git -C "$DIR" rev-parse FETCH_HEAD^{commit})" = "$EXPECTED_COMMIT"
+          git -C "$DIR" checkout --detach "$EXPECTED_COMMIT"
+          test "$(git -C "$DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          readonly CLANG="$DIR/clang-r370808/bin/clang"
+          test -x "$CLANG"
+          test "$(head -n 1 "$DIR/clang-r370808/AndroidVersion.txt")" = '10.0.1'
+          "$CLANG" --version | grep -F 'clang version 10.0.1'
+          printf 'int roots6lite_compiler_smoke(void) { return 0; }\n' | "$CLANG" \
+            -target aarch64-linux-gnu -Werror=unknown-warning-option \
+            -Wno-pragma-pack -gdwarf-4 -x c -c -o /dev/null -
+
+      - name: Fetch pinned KernelSU Next official legacy branch (no curl pipe shell, no auto-updates)
+        run: |
+          set -euo pipefail
+          readonly KSU_REPO='https://github.com/KernelSU-Next/KernelSU-Next.git'
+          readonly KSU_PIN='e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a'
+          git init _ksu_next
+          git -C _ksu_next remote add origin "$KSU_REPO"
+          git -C _ksu_next -c protocol.version=2 fetch --depth 1 origin "$KSU_PIN"
+          test "$(git -C _ksu_next rev-parse FETCH_HEAD^{commit})" = "$KSU_PIN"
+          git -C _ksu_next checkout --detach "$KSU_PIN"
+          test "$(git -C _ksu_next rev-parse HEAD)" = "$KSU_PIN"
+          test -f _ksu_next/kernel/Kbuild
+          test -f _ksu_next/kernel/Kconfig
+          echo "KSU_NEXT_OFFICIAL_LEGACY_COMMIT=$KSU_PIN"
+          echo 'RESEARCH_ONLY=YES; FLASH_ALLOWED=NO'
+
+      - name: Compile opt-in KSU Next Legacy manual-hook research kernel (NEVER FLASH)
+        run: |
+          set -euo pipefail
+          export ROOTS6_KSU_RESEARCH=1
+          export ROOTS6_KSU_UPSTREAM_ROOT="$PWD/_ksu_next"
+          export ANDROID_GCC49_PREFIX="$PWD/_toolchains/android-gcc-4.9/bin/aarch64-linux-android-"
+          export SAMSUNG_COMPILER_PROFILE=aosp-clang10
+          export AOSP_CLANG10_BINARY="$PWD/_toolchains/aosp-clang10/clang-r370808/bin/clang"
+          bash scripts/compile_samsung_baseline.sh "$PWD/_samsung/kernel" "$PWD/_out" "$PWD/_evidence"
+
+      - name: Gate linked preinit ELF and exact AOSP10 stock research export CRC parity
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_kernelsu_preinit_elf.py \
+            --image _out/arch/arm64/boot/Image \
+            --system-map _out/System.map \
+            --report _evidence/ksu-preinit-elf-layout.json
+          # This is the byte-stable Module.symvers from successful *research*
+          # AOSP10 stock builds, NOT proof of Samsung CYE1 OEM module ABI.
+          echo 'a76b277bee7a6a8ccd30468b9233401887aea66ee049a39a67901f87dac5cd94  _out/Module.symvers' | sha256sum -c -
+          if grep -Fq 'atomic_t filter_count;' _samsung/kernel/include/linux/seccomp.h; then
+            echo '::error::Unneeded KernelSU seccomp.filter_count backport changed Samsung 4.14 export CRCs'
+            exit 1
+          fi
+          {
+            echo 'RESEARCH_STOCK_CONTROL_SYMVERS_BINARY_EQUAL=YES'
+            echo 'COMMON_EXPORTED_SYMBOLS=12559'
+            echo 'RESEARCH_STOCK_CONTROL_SYMVERS_SHA256=a76b277bee7a6a8ccd30468b9233401887aea66ee049a39a67901f87dac5cd94'
+            echo 'OEM_CYE1_MODULE_ABI=UNVERIFIED'
+            echo 'OEM_MODULE_SIGNATURE_TRUST=UNVERIFIED'
+            echo 'FLASH_ALLOWED=NO'
+          } | tee _evidence/ksu-stock-control-crc-parity.txt
+
+      - name: Audit real CYE1 OEM export mismatch against compiled KernelSU research kernel
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_oem_cye1_abi.py \
+            --manifest docs/CYE1_STOCK_EXPORT_ABI.json \
+            --symvers _out/Module.symvers \
+            --report _evidence/oem-cye1-export-crc-deltas.json
+          # This is a diagnostic gate, not a boot authorization. The known
+          # missing exports and changed OEM CRCs remain explicit blockers.
+          grep -F '"oem_cye1_export_crc_parity": "NO"' _evidence/oem-cye1-export-crc-deltas.json
+          grep -F '"flash_allowed": false' _evidence/oem-cye1-export-crc-deltas.json
+          echo 'OEM_CYE1_EXPORT_CRC_PARITY=NO'
+          echo 'FLASH_ALLOWED=NO'
+
+      - name: Publish logs, configuration, and raw kernel if built
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SM-P613-KERNELSU-NEXT-LEGACY-RESEARCH-NOT-FLASHABLE
+          path: |
+            _evidence/
+            _out/.config
+            _out/arch/arm64/boot/Image
+            _out/Module.symvers
+            _out/System.map
+            _out/arch/arm64/boot/dts/**/*.dtb
+            _out/arch/arm64/boot/dts/**/*.dtbo
+            _out/**/*.ko
+            _signed_modules/lib/modules/*/kernel/**/*.ko
+          if-no-files-found: warn
+          retention-days: 14

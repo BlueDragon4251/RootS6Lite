@@ -1,0 +1,202 @@
+name: SM-P613 compiled DTBO artifact smoke test (NO FLASH)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-dtbo-artifact-audit.yml'
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Existing full-compile Actions run ID whose artifact should be inspected'
+        required: false
+        default: '43373071951'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FULL_BUILD_RUN: ${{ inputs.run_id || '43373071951' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libfdt test tools (no kernel compilation)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends device-tree-compiler
+
+      - name: Download already-built non-flashable research artifact
+        run: |
+          set -euo pipefail
+          mkdir -p _artifact _audit
+          gh run download "$FULL_BUILD_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name SM-P613-COMPILER-EXPERIMENT-NOT-FLASHABLE --dir _artifact
+          echo "Artifact from run $FULL_BUILD_RUN"
+          find _artifact/_evidence -maxdepth 1 -type f -printf '%f\n' | sort
+          echo '=== Original build status ==='
+          sed -n '1,50p' _artifact/_evidence/status.txt
+          echo '=== Saved libfdt error log (if generated) ==='
+          if test -f _artifact/_evidence/dtbo-overlay-apply.log; then
+            sed -n '1,100p' _artifact/_evidence/dtbo-overlay-apply.log
+          else
+            echo 'No overlay-application log; failure preceded the merge command.'
+          fi
+          echo '=== Public signing certificate fingerprint (if generated) ==='
+          if test -f _artifact/_evidence/module-signing-cert.txt; then
+            sed -n '1,10p' _artifact/_evidence/module-signing-cert.txt
+          else
+            echo 'No certificate metadata generated.'
+          fi
+
+      - name: Verify actual research Image embeds the recorded IKCONFIG (no compile)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          from scripts.audit_stock_firmware import embedded_ikconfig_metadata
+
+          image = Path('_artifact/_out/arch/arm64/boot/Image').read_bytes()
+          config = Path('_artifact/_evidence/stock-generated.config').read_bytes()
+          result = embedded_ikconfig_metadata(image)
+          assert result["status"] == "found", result
+          expected = hashlib.sha256(config).hexdigest()
+          assert result["sha256"] == expected, (result["sha256"], expected)
+          assert result["selected"].get("CONFIG_KPROBES") == "n"
+          assert result["selected"].get("CONFIG_MODVERSIONS") == "y"
+          assert result["selected"].get("CONFIG_MODULE_SIG_FORCE") == "y"
+          print("EMBEDDED_IKCONFIG=EXACT_SHA256_MATCH")
+          print("IKCONFIG_SHA256=" + expected)
+          print("KPROBES=n MODVERSIONS=y MODULE_SIG_FORCE=y")
+          print("STOCK_KERNEL_CONFIG_MATCH=UNVERIFIED")
+          print("FLASH_ALLOWED=NO")
+          PY
+
+      - name: Replay base plus Samsung overlay and print full error
+        run: |
+          set -euo pipefail
+          base='_artifact/_out/arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb'
+          overlay='_artifact/_out/arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo'
+          merged='_audit/NONFLASHABLE-merged-preview.dtb'
+          test -s "$base"
+          test -s "$overlay"
+          echo '=== Compiled source pair ==='
+          sha256sum "$base" "$overlay" | tee _audit/source-pair.sha256
+          # Independent SHA256 reference values from the user's offline,
+          # read-only schema-2 audit of original P613XXS8CYE1 boot/recovery.
+          # Exact FDT bytes match the stock *embedded* blobs, NOT a verified
+          # installed DTBO partition or proof of kernel/module ABI compatibility.
+          readonly STOCK_BASE_SHA256='e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816'
+          readonly STOCK_OVERLAY_SHA256='aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12'
+          {
+            echo "$STOCK_BASE_SHA256  $base"
+            echo "$STOCK_OVERLAY_SHA256  $overlay"
+          } | sha256sum --check --status || {
+            echo '::error::Compiled FDT bytes differ from verified original stock boot/recovery embedded FDT reference hashes.'
+            exit 1
+          }
+          {
+            echo 'STOCK_BOOT_AND_RECOVERY_BASE_DTB=EXACT_SHA256_MATCH'
+            echo 'STOCK_RECOVERY_SAMSUNG_DTBO=EXACT_SHA256_MATCH'
+            echo 'STOCK_INSTALLED_DTBO_PARTITION=UNVERIFIED'
+            echo 'KERNEL_MODULE_ABI=UNVERIFIED'
+            echo 'FLASH_ALLOWED=NO'
+          } | tee _audit/stock-fdt-exact-match.txt
+          set +e
+          fdtoverlay -i "$base" -o "$merged" "$overlay" > _audit/fdtoverlay.log 2>&1
+          code=$?
+          set -e
+          echo "FDTO_OVERLAY_EXIT_CODE=$code" | tee _audit/status.txt
+          sed -n '1,160p' _audit/fdtoverlay.log
+          echo '=== Overlay top-level nodes ==='
+          fdtget -l "$overlay" / | head -n 40 || true
+          echo '=== Fragment 0 target (raw) ==='
+          fdtget -t x "$overlay" '/fragment@0' target || true
+          fdtget -t s "$overlay" '/fragment@0' target-path || true
+          echo '=== Overlay fixup sections ==='
+          fdtget -p "$overlay" /__fixups__ | head -n 20 || true
+          fdtget -p "$overlay" /__local_fixups__ | head -n 20 || true
+          echo '=== Base has symbols? ==='
+          fdtget -p "$base" /__symbols__ | head -n 8 || true
+          echo '=== Unresolved symbol labels from Samsung overlay ==='
+          while read -r key; do
+            if ! fdtget -t s "$base" /__symbols__ "$key" >/dev/null 2>&1; then
+              echo "BASE_MISSING_LABEL=$key"
+            fi
+          done < <(fdtget -p "$overlay" /__fixups__)
+          echo '=== Reference fragment fixup strings ==='
+          fdtget -t s "$overlay" /__fixups__ mdss_mdp || true
+          fdtget -t s "$overlay" /__fixups__ tlmm || true
+          echo '=== Reference base label values ==='
+          fdtget -t s "$base" /__symbols__ mdss_mdp || true
+          fdtget -t s "$base" /__symbols__ tlmm || true
+          echo '=== Fragment target audit ==='
+          all_fixups=''
+          while read -r key; do
+            all_fixups+=" $(fdtget -t s "$overlay" /__fixups__ "$key")"
+          done < <(fdtget -p "$overlay" /__fixups__)
+          while read -r frag; do
+            case "$frag" in fragment@*) ;; *) continue ;; esac
+            if phandle="$(fdtget -t x "$overlay" "/$frag" target 2>/dev/null)"; then
+              if [[ "$phandle" == 'ffffffff' && "$all_fixups" != *"/$frag:target:0"* ]]; then
+                echo "FRAGMENT_UNRESOLVED_PLACEHOLDER=$frag"
+              fi
+            elif ! fdtget -t s "$overlay" "/$frag" target-path >/dev/null 2>&1; then
+              echo "FRAGMENT_MISSING_TARGET=$frag"
+            fi
+          done < <(fdtget -l "$overlay" /)
+          if (( code != 0 )); then
+            echo "::warning::Standard libfdt rejects Samsung's DSI sibling-name ambiguity (FDT_ERR_BADOVERLAY); see docs/DEVICE_TREE_AUDIT.md."
+            echo 'STANDARD_LIBFDT=REJECTED_KNOWN_NAME_COLLISION' >> _audit/status.txt
+          else
+            test -s "$merged"
+            sha256sum "$merged" | tee _audit/merged-preview.sha256
+            fdtget -t s "$merged" / compatible | tee _audit/merged-compatible.txt
+            echo 'STANDARD_LIBFDT=SUCCESS_SOURCE_PAIR_ONLY' >> _audit/status.txt
+          fi
+          echo 'This legacy libfdt check does not decide Android bootloader compatibility.'
+
+      - name: Verify source-pair overlay with hash-pinned AOSP libufdt
+        run: |
+          set -euo pipefail
+          readonly PREBUILT_URL='https://android.googlesource.com/kernel/prebuilts/build-tools/+/refs/heads/main/linux-x86/bin/ufdt_apply_overlay?format=TEXT'
+          readonly EXPECTED_GIT_BLOB='2a243bd8eac5c95145b1885e9b009afdf8d5ac2e'
+          curl --fail --silent --show-error --location --retry 3 "$PREBUILT_URL" | base64 --decode > _audit/aosp-ufdt-apply
+          test "$(git hash-object _audit/aosp-ufdt-apply)" = "$EXPECTED_GIT_BLOB"
+          chmod +x _audit/aosp-ufdt-apply
+          file _audit/aosp-ufdt-apply
+          set +e
+          _audit/aosp-ufdt-apply \
+            _artifact/_out/arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb \
+            _artifact/_out/arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo \
+            _audit/NONFLASHABLE-ufdt-merged.dtb > _audit/aosp-libufdt.log 2>&1
+          code=$?
+          set -e
+          echo "AOSP_LIBUFDT_EXIT_CODE=$code" | tee _audit/aosp-libufdt-status.txt
+          sed -n '1,120p' _audit/aosp-libufdt.log
+          if (( code != 0 )) || ! test -s _audit/NONFLASHABLE-ufdt-merged.dtb; then
+            echo "::error::AOSP libufdt failed on compiled source pair (exit $code)."
+            exit 1
+          fi
+          sha256sum _audit/NONFLASHABLE-ufdt-merged.dtb | tee _audit/aosp-libufdt-merged.sha256
+          compatible="$(fdtget -t s _audit/NONFLASHABLE-ufdt-merged.dtb / compatible)"
+          [[ "$compatible" == *"qcom,atoll-ab-idp"* ]]
+          echo "AOSP_LIBUFDT_COMPATIBLE=$compatible" | tee -a _audit/aosp-libufdt-status.txt
+          echo 'STOCK_DTBO_ABI=UNVERIFIED' | tee -a _audit/aosp-libufdt-status.txt
+          echo 'FLASH_ALLOWED=NO' | tee -a _audit/aosp-libufdt-status.txt
+          echo 'AOSP libufdt source-pair overlay merge passed. Physical boot and target firmware matching UNVERIFIED.'
+
+      - name: Upload diagnostic evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SM-P613-DTBO-DIAGNOSTICS-NO-FLASH
+          path: _audit/
+          if-no-files-found: warn
+          retention-days: 14

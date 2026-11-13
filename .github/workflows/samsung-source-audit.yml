@@ -1,0 +1,67 @@
+name: Official Samsung OSRC source audit (NOT FLASHABLE)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-source-audit.yml'
+      - 'scripts/verify_samsung_source.py'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Tag containing SM-P613_EUR_14_Opensource.zip'
+        required: true
+        default: source-P613XXU4CWL1
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official Samsung source from release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || 'source-P613XXU4CWL1' }}
+        run: |
+          set -euo pipefail
+          mkdir -p samsung-download samsung-audit
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern 'SM-P613_EUR_14_Opensource.zip' --dir samsung-download
+          test -s samsung-download/SM-P613_EUR_14_Opensource.zip
+
+      - name: Verify source and extract kernel
+        run: |
+          python3 scripts/verify_samsung_source.py \
+            --archive samsung-download/SM-P613_EUR_14_Opensource.zip \
+            --workdir samsung-audit --extract-kernel
+          cat samsung-audit/samsung-source-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate original Samsung defconfig (NO kernel compilation)
+        run: |
+          set -euo pipefail
+          cd samsung-audit/kernel
+          mkdir -p "$RUNNER_TEMP/samsung-kout"
+          make -j2 ARCH=arm64 O="$RUNNER_TEMP/samsung-kout" \
+            DTC_EXT="$PWD/tools/dtc" CONFIG_BUILD_ARM64_DT_OVERLAY=y \
+            gta4xlvewifi_eur_open_defconfig 2>&1 | tee ../kconfig.log
+          cp "$RUNNER_TEMP/samsung-kout/.config" ../stock-config.generated
+          grep -Fx 'CONFIG_KALLSYMS=y' ../stock-config.generated
+          grep -Fx '# CONFIG_KPROBES is not set' ../stock-config.generated
+          echo 'Generated stock Kconfig; not flashable. No boot image was built.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SAMSUNG-SOURCE-AUDIT-NOT-FLASHABLE
+          path: |
+            samsung-audit/samsung-source-audit.json
+            samsung-audit/samsung-source-summary.md
+            samsung-audit/kconfig.log
+            samsung-audit/stock-config.generated
+          if-no-files-found: warn
+          retention-days: 30
