@@ -165,6 +165,33 @@ jobs:
           echo "LIBFDT_PINNED_DEBUG_EXIT_CODE=$code"
           sed -n '1,90p' _audit/libfdt-stage-debug.log
 
+      - name: Compare official AOSP libufdt overlay application semantics
+        if: failure()
+        run: |
+          set -euo pipefail
+          readonly PREBUILT_URL='https://android.googlesource.com/kernel/prebuilts/build-tools/+/refs/heads/main/linux-x86/bin/ufdt_apply_overlay?format=TEXT'
+          readonly EXPECTED_GIT_BLOB='2a243bd8eac5c95145b1885e9b009afdf8d5ac2e'
+          curl --fail --silent --show-error --location --retry 3 "$PREBUILT_URL" | base64 --decode > _audit/aosp-ufdt-apply
+          test "$(git hash-object _audit/aosp-ufdt-apply)" = "$EXPECTED_GIT_BLOB"
+          chmod +x _audit/aosp-ufdt-apply
+          file _audit/aosp-ufdt-apply
+          set +e
+          _audit/aosp-ufdt-apply \
+            _artifact/_out/arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb \
+            _artifact/_out/arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo \
+            _audit/NONFLASHABLE-ufdt-merged.dtb > _audit/aosp-libufdt.log 2>&1
+          code=$?
+          set -e
+          echo "AOSP_LIBUFDT_EXIT_CODE=$code" | tee _audit/aosp-libufdt-status.txt
+          sed -n '1,120p' _audit/aosp-libufdt.log
+          if (( code == 0 )) && test -s _audit/NONFLASHABLE-ufdt-merged.dtb; then
+            sha256sum _audit/NONFLASHABLE-ufdt-merged.dtb | tee _audit/aosp-libufdt-merged.sha256
+            fdtget -t s _audit/NONFLASHABLE-ufdt-merged.dtb / compatible || true
+            echo 'AOSP libufdt smoke test succeeds on source pair, STOCK COMPATIBILITY STILL UNVERIFIED.'
+          else
+            echo 'AOSP libufdt also rejects source pair or tool invocation; inspect above logs.'
+          fi
+
       - name: Upload diagnostic evidence only
         if: always()
         uses: actions/upload-artifact@v4
