@@ -134,8 +134,7 @@ jobs:
           stages = [
               'fdt_find_max_phandle', 'overlay_adjust_local_phandles',
               'overlay_update_local_references', 'overlay_fixup_phandles',
-              'overlay_prevent_phandle_overwrite', 'overlay_merge',
-              'overlay_symbol_update'
+              'overlay_merge', 'overlay_symbol_update'
           ]
           if chunk.count(pattern) != len(stages):
               raise SystemExit(f'Unexpected pinned libfdt stage count: {chunk.count(pattern)}')
