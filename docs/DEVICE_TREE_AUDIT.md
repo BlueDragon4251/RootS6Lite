@@ -87,3 +87,18 @@ The latest base `atoll-ab-idp.dtb` SHA256 is `e198bad6723d6020442aa7d23c1d361720
 The full artifact **continues to record** `DTBO_STANDARD_LIBFDT_SMOKE_TEST=FAILED_EXIT_1`, `ANDROID_LIBUFDT_CHECK=PENDING` (the Android verification is a separate successful workflow), `STOCK_DTBO_MATCH=UNVERIFIED`, `FLASH_ALLOWED=NO` and `MODULE_SIGNATURE_TRAILER=ABSENT_IN_FIRST_MODULE`. The latter concerns an unsigned research `.ko` output, not stock module-signature policy verification. The artifact includes the public, auto-generated X.509 certificate fingerprint and DER; **no private signing key** was uploaded.
 
 **Unresolved repeatability:** The latest Image hash differs from earlier full builds even though the generated config, the base DTB, Samsung DTBO and ten module hashes match. The auto-generated public X.509 certificate was found embedded at offset 40,251,136 in two research Images, and its contents differ per run. Do not attribute all Image binary drift to that certificate without further binary-level analysis. This and the missing exact OEM Qualcomm Clang-10 toolchain remain research issues; do not release a flashable image.
+
+
+## Android libufdt reproduced from official pinned source — 2026-11-13
+
+A new independent [GitHub Actions Run 43404373567](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43404373567) **SUCCEEDED** using official [AOSP `system/libufdt` commit `c2169a1cb29bf0f5494f4e8b67ef662918e66679`](https://android.googlesource.com/platform/system/libufdt/+/c2169a1cb29bf0f5494f4e8b67ef662918e66679), fetched by full, verified commit hash and compiled with `-Wall -Werror` against Ubuntu 22.04 libfdt. Unlike the earlier prebuilt-only comparison, the Android host application is rebuilt directly from pinned source during CI.
+
+The job downloaded the **completed pinned AOSP Clang10** research artifact from [Run 43398430871](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43398430871) and checked both binary tree hashes against verified target-stock reference SHA256 values *before* attempting the overlay:
+
+- Qualcomm `atoll-ab-idp.dtb`: `e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816` — SHA256 check **OK**.
+- Samsung Wi-Fi EUR `atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo`: `aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12` — SHA256 check **OK**.
+- Standard Ubuntu `fdtoverlay`: exit **1** (the previously localized ambiguous Samsung sibling-name issue).
+- Freshly built, pinned Android `ufdt_apply_overlay`: exit **0**, with nonempty merged FDT; root `compatible` remained `qcom,atoll-ab-idp qcom,atoll-ab qcom,idp`.
+- Exact CI evidence artifact: `SM-P613-ANDROID-LIBUFDT-AUDIT-NOT-FLASHABLE` (artifact ID `14026233053`, 14-day retention). Includes input provenance, individual logs and the **NONFLASHABLE** merged research FDT.
+
+This establishes that **AOSP's implementation can apply this exact stock-matching source DTB/DTBO pair** and that standard libfdt's failure is not by itself a universal overlay incompatibility. It does **not** verify which overlay engine the actual Samsung/Qualcomm boot chain uses, board revision and partition selection, stock kernel's ABI, physical boot, or KernelSU. Keep `FLASH_ALLOWED=NO`. The full-build research Images remain byte-different from stock, and the exact OEM toolchain is unavailable.
