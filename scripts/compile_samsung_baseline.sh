@@ -77,8 +77,8 @@ export ARCH=arm64
 export PYTHON=python3
 # Samsung's own build_kernel.sh specifies this Android GCC 4.9 prefix.  The
 # workflow obtains an AOSP copy at a pinned commit and verifies its ld.bfd
-# SHA256 before invoking this script.  The current Clang 14 frontend remains
-# experimental; this restores only the documented Android 4.9 binutils path.
+# SHA256 before invoking this script. Both supported compiler frontends are
+# experimental relative to Samsung's proprietary Qualcomm toolchain.
 export CROSS_COMPILE="${ANDROID_GCC49_PREFIX:?ANDROID_GCC49_PREFIX must name the verified Android GCC 4.9 aarch64 prefix}"
 export CLANG_TRIPLE=aarch64-linux-gnu-
 export KBUILD_BUILD_USER=roots6lite-ci
@@ -206,6 +206,27 @@ test -s "$OUT/arch/arm64/boot/Image"
 test -s "$OUT/Module.symvers"
 test -s "$OUT/System.map"
 sha256sum "$OUT/arch/arm64/boot/Image" >> "$EVIDENCE/provenance.txt"
+# The authenticated P613XXS8CYE1 boot and recovery use the *same* decompressed
+# Image. Compare it explicitly, but a mismatch alone is not evidence of a
+# particular ABI failure and a match would still not prove bootability.
+STOCK_IMAGE_SHA256=14defad3fe7854da3cadc43b2c01e96a48a27a4a0e847043c989c45c66fb8228
+STOCK_IMAGE_BYTES=48832528
+RESEARCH_IMAGE_SHA256="$(sha256sum "$OUT/arch/arm64/boot/Image" | cut -d' ' -f1)"
+RESEARCH_IMAGE_BYTES="$(stat -c %s "$OUT/arch/arm64/boot/Image")"
+if [[ "$RESEARCH_IMAGE_SHA256" == "$STOCK_IMAGE_SHA256" ]]; then
+  image_match=YES
+else
+  image_match=NO
+fi
+{
+  echo "STOCK_IMAGE_SHA256=$STOCK_IMAGE_SHA256"
+  echo "STOCK_IMAGE_BYTES=$STOCK_IMAGE_BYTES"
+  echo "RESEARCH_IMAGE_SHA256=$RESEARCH_IMAGE_SHA256"
+  echo "RESEARCH_IMAGE_BYTES=$RESEARCH_IMAGE_BYTES"
+  echo "IMAGE_BINARY_EQUAL_STOCK=$image_match"
+  echo "FLASH_ALLOWED=NO"
+} >> "$EVIDENCE/provenance.txt"
+echo "IMAGE_BINARY_EQUAL_STOCK=$image_match" | tee -a "$EVIDENCE/status.txt"
 sha256sum "$OUT/Module.symvers" "$OUT/System.map" >> "$EVIDENCE/provenance.txt"
 
 # Research reproducibility: CONFIG_MODULE_SIG enables a newly generated
@@ -227,6 +248,23 @@ BASE_DTB="arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb"
 DEVICE_DTBO="arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo"
 test -s "$OUT/$BASE_DTB"
 test -s "$OUT/$DEVICE_DTBO"
+# Reference hashes were extracted from the original whole-file-hash-verified
+# P613XXS8CYE1 boot/recovery images (audit v3). Enforce exact board-tree
+# parity for this research target, but never equate it to module/boot parity.
+STOCK_BASE_DTB_SHA256=e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816
+STOCK_BOARD_DTBO_SHA256=aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12
+printf '%s  %s\n' "$STOCK_BASE_DTB_SHA256" "$OUT/$BASE_DTB" | sha256sum -c -
+printf '%s  %s\n' "$STOCK_BOARD_DTBO_SHA256" "$OUT/$DEVICE_DTBO" | sha256sum -c -
+{
+  echo "STOCK_BASE_DTB_SHA256=$STOCK_BASE_DTB_SHA256"
+  echo "STOCK_BOARD_DTBO_SHA256=$STOCK_BOARD_DTBO_SHA256"
+  echo "BASE_DTB_BINARY_EQUAL_STOCK=YES"
+  echo "DEVICE_DTBO_BINARY_EQUAL_STOCK=YES"
+  echo "MODULE_ABI_EQUAL_STOCK=UNVERIFIED"
+  echo "FLASH_ALLOWED=NO"
+} >> "$EVIDENCE/provenance.txt"
+echo "BASE_DTB_BINARY_EQUAL_STOCK=YES" | tee -a "$EVIDENCE/status.txt"
+echo "DEVICE_DTBO_BINARY_EQUAL_STOCK=YES" | tee -a "$EVIDENCE/status.txt"
 
 # Image alone omits the device-tree and module compatibility evidence needed
 # for later baseline work.  Require both output classes and retain manifests
