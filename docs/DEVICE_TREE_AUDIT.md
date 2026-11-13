@@ -67,3 +67,13 @@ Read-only parsing of the saved binary FDT structure maps these offsets to:
 The standard libfdt child-name lookup for `qcom,dsi-display` can select the first `qcom,dsi-display@0` sibling when applying local fixups. This explains the observed `FDT_ERR_BADOVERLAY` without implying that the Android/Qualcomm bootloader uses identical overlay semantics. All 161 external overlay fixup label names resolved against the compiled base's `__symbols__`; no missing fragment targets were found. **Do not silently change Samsung's FDT source or claim stock compatibility.**
 
 Next: compare the overlay using Android's `libufdt` implementation and with the original `P613XXS8CYE1` boot-chain DTBO. Treat standard `fdtoverlay` as a separate diagnostic; preserve its failure record and mark `FLASH_ALLOWED=NO`.
+### Android libufdt validation — completed on compiled source pair
+
+[Artifact-only CI Run 43373499084](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43373499084) **PASSED** with the exact saved CWL1 base DTB and Samsung Wi-Fi EUR DTBO. The workflow fetches official AOSP `ufdt_apply_overlay` from `kernel/prebuilts/build-tools` and verifies Git blob SHA-1 `2a243bd8eac5c95145b1885e9b009afdf8d5ac2e` before executing it. Outcome:
+
+- Standard `fdtoverlay`: exit 1 / known `FDT_ERR_BADOVERLAY` on ambiguous Samsung DSI child names; retained in logs as diagnostic.
+- Android `libufdt`: **exit 0**; merged, non-flashable FDT SHA256 `157aa936a2a27191e62145046259d7a8e828640e2881e15f225e2d82e80cbec6`.
+- Merged root compatible: `qcom,atoll-ab-idp qcom,atoll-ab qcom,idp`.
+- Artifact explicitly records `STOCK_DTBO_ABI=UNVERIFIED` and `FLASH_ALLOWED=NO`.
+
+This verifies that an Android overlay implementation can merge the **compiled CWL1 source pair**. It is not verification of the bootloader's actual implementation, DTBO partition selection, kernel ABI or the target `P613XXS8CYE1` firmware. Those remain required before any boot test.
