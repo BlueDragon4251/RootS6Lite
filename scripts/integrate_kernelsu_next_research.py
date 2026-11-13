@@ -200,6 +200,18 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
     )
     kbuild_patched = replace_exact(
         kbuild_original.decode(), kbuild_old, kbuild_new, 1, "upstream/kernel/Kbuild"
+    )
+    # Samsung's CONFIG_RKP_NS_PROT=y changes `struct mount::mnt` from
+    # an embedded `struct vfsmount` to a pointer. The upstream 4.14 backport
+    # assumes the embedded form and emits invalid `mnt->mnt.mnt_flags`.
+    # Both forms refer to `path->mnt`, a real `struct vfsmount *`, so read
+    # the checked flag via that common pointer without changing the check.
+    kbuild_patched = replace_exact(
+        kbuild_patched,
+        'if (mnt->mnt.mnt_flags & MNT_LOCKED)',
+        'if (path->mnt->mnt_flags & MNT_LOCKED)',
+        1,
+        "upstream/kernel/Kbuild Samsung RKP_NS_PROT mount backport",
     ).encode()
 
     # All anchor checks complete: only now mutate ephemeral extracted files.
