@@ -147,14 +147,24 @@ fi
 test -s "$OUT/arch/arm64/boot/Image"
 sha256sum "$OUT/arch/arm64/boot/Image" >> "$EVIDENCE/provenance.txt"
 
+# The Samsung Wi-Fi EUR board uses an atoll-ab-idp base DTB plus its own
+# GTA4XLVEWIFI revision-00 DTBO. A generic base DTB alone is not sufficient.
+BASE_DTB="arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb"
+DEVICE_DTBO="arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo"
+test -s "$OUT/$BASE_DTB"
+test -s "$OUT/$DEVICE_DTBO"
+
 # Image alone omits the device-tree and module compatibility evidence needed
 # for later baseline work.  Require both output classes and retain manifests
 # of every emitted file rather than treating an Image-only build as complete.
 mapfile -t dtbs < <(find "$OUT/arch/arm64/boot/dts" -type f -name '*.dtb' -printf 'arch/arm64/boot/dts/%P\n' | sort)
+mapfile -t dtbos < <(find "$OUT/arch/arm64/boot/dts" -type f -name '*.dtbo' -printf 'arch/arm64/boot/dts/%P\n' | sort)
 mapfile -t modules < <(cd "$OUT" && find . -type f -name '*.ko' -printf '%P\n' | sort)
 (( ${#dtbs[@]} > 0 ))
+(( ${#dtbos[@]} > 0 ))
 (( ${#modules[@]} > 0 ))
 printf '%s\n' "${dtbs[@]}" > "$EVIDENCE/dtb-files.txt"
+printf '%s\n' "${dtbos[@]}" > "$EVIDENCE/dtbo-files.txt"
 printf '%s\n' "${modules[@]}" > "$EVIDENCE/module-files.txt"
 (
   cd "$OUT"
@@ -162,7 +172,32 @@ printf '%s\n' "${modules[@]}" > "$EVIDENCE/module-files.txt"
 ) > "$EVIDENCE/dtb.sha256"
 (
   cd "$OUT"
+  sha256sum "${dtbos[@]}"
+) > "$EVIDENCE/dtbo.sha256"
+(
+  cd "$OUT"
   sha256sum "${modules[@]}"
 ) > "$EVIDENCE/modules.sha256"
-printf 'DTB_COUNT=%s\nMODULE_COUNT=%s\n' "${#dtbs[@]}" "${#modules[@]}" | tee -a "$EVIDENCE/status.txt"
-echo "Image, DTBs, and modules compiled, but NEVER FLASH these artifacts: stock ABI/DTB, exact toolchain and physical boot are unverified." | tee -a "$EVIDENCE/status.txt"
+
+# Read actual compiled FDT properties; fail if the board overlay or matching
+# Qualcomm base is absent/wrong. This is a provenance check, NOT boot proof.
+model="$(fdtget -t s "$OUT/$DEVICE_DTBO" / model)"
+board_id="$(fdtget -t x "$OUT/$DEVICE_DTBO" / qcom,board-id)"
+overlay_compat="$(fdtget -t s "$OUT/$DEVICE_DTBO" / compatible)"
+base_compat="$(fdtget -t s "$OUT/$BASE_DTB" / compatible)"
+[[ "$model" == *"Samsung GTA4XLVEWIFI EUR PROJECT"* ]]
+[[ "$board_id" == "22 0" ]]
+[[ "$overlay_compat" == *"qcom,atoll-ab-idp"* ]]
+[[ "$base_compat" == *"qcom,atoll-ab-idp"* ]]
+{
+  echo "BASE_DTB=$BASE_DTB"
+  echo "BASE_COMPATIBLE=$base_compat"
+  echo "DEVICE_DTBO=$DEVICE_DTBO"
+  echo "DEVICE_MODEL=$model"
+  echo "DEVICE_COMPATIBLE=$overlay_compat"
+  echo "DEVICE_BOARD_ID_HEX=$board_id"
+  echo "DTB_DTBO_ABI_MATCH_WITH_STOCK=UNVERIFIED"
+  echo "FLASH_ALLOWED=NO"
+} > "$EVIDENCE/device-tree-metadata.txt"
+printf 'DTB_COUNT=%s\nDTBO_COUNT=%s\nMODULE_COUNT=%s\n' "${#dtbs[@]}" "${#dtbos[@]}" "${#modules[@]}" | tee -a "$EVIDENCE/status.txt"
+echo "Image, DTBs, DTBOs and modules compiled, but NEVER FLASH: actual stock DTBO/ABI and physical boot remain unverified." | tee -a "$EVIDENCE/status.txt"

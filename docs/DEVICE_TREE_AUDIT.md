@@ -1,0 +1,52 @@
+# SM-P613 Samsung Device Tree / DTBO audit (research only)
+
+Updated 2026-11-13. **No device-tree output in this project is approved for flashing.**
+
+## Source and kernel configuration
+
+Official Samsung OSRC ZIP: `SM-P613_EUR_14_Opensource.zip`, release `source-P613XXU4CWL1`, SHA256 `728e592f5ad856773e093a01adebedb06a5ef2554c85813ae275a842eecb13b7`.
+
+The `gta4xlvewifi_eur_open_defconfig` generates `CONFIG_SEC_GTA4XLVEWIFI_EUR_OPEN=y`, `CONFIG_ARCH_ATOLL=y`, and `CONFIG_OF=y`.
+
+Samsung's `arch/arm64/boot/dts/samsung/Makefile` maps:
+
+- Device overlay: `atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo`
+- Overlay source: `atoll-sec-gta4xlvewifi-eur-overlay-r00.dts`
+- Base DTB: `../qcom/atoll-ab-idp.dtb` (`SEC_ATOLL_BASE_DTB`)
+
+The Samsung overlay source declares `model = "Samsung GTA4XLVEWIFI EUR PROJECT BRINGUP (board-id,00)"`, `compatible = "qcom,atoll-ab-idp", "qcom,atoll-ab", "qcom,idp"`, `qcom,board-id = <34 0>`, and `dtbo-version = <0>`. These are **source facts, not confirmation of the device's installed boot-chain DTBO**.
+
+## Findings from successful experimental compile
+
+[GitHub Actions Run 43316540672](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43316540672) compiled:
+- ARM64 `Image` (48,826,384 bytes; SHA256 `19ca8df5f1d2abfe3496f6d3219841a41d675c4d757c3837ef441e23b1187e57`)
+- One base `atoll-ab-idp.dtb` (442,711 bytes)
+- Ten ARM64 `.ko` modules (`vermagic=4.14.190-perf SMP preempt mod_unload modversions aarch64` observed in `rdbg.ko`)
+- **Also compiled** the device-specific `atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo` according to the full CI `build.log` (`DTC` entry), but the artifact upload and manifests retained only `*.dtb`, not `*.dtbo`.
+
+Therefore the generic-looking `atoll-ab-idp.dtb` is the expected base in this source recipe. **The missing item in the saved evidence is the corresponding Samsung DTBO**, not necessarily a wrong base DTB.
+
+The compiler also emitted many device-tree and reverse-overlay warnings (e.g. reg-format, GPIO, clocks, cooling-device references). Some may be artifacts of unresolved overlay phandles during reverse rendering, but they have **not been individually verified or waived**. Keep full logs and investigate before claiming board compatibility.
+
+## New CI evidence gates
+
+The research CI now requires both the base `atoll-ab-idp.dtb` and the specific Samsung `atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo`, collects all `*.dtbo` outputs, and saves:
+
+- `_evidence/dtbo-files.txt`
+- `_evidence/dtbo.sha256`
+- `_evidence/device-tree-metadata.txt`
+
+The metadata gate reads the compiled FDT with `fdtget` and validates the expected Samsung model text, the overlay board-id `0x22 0x0` (decimal 34 and 0), and compatible `qcom,atoll-ab-idp` base and overlay identifiers.
+
+An Actions run must confirm these checks. This does **not** establish that the DTB/DTBO matches running firmware `P613XXS8CYE1`.
+
+## Unfinished stock-compatibility checks
+
+1. Inspect verified original firmware `P613XXS8CYE1` boot/dtbo payloads and their actual FDT properties, version/revision selectors and hashes.
+2. Compare the base and overlay against the compiled CWL1 files and identify vendor changes since CWL1.
+3. Review all device-tree warnings and test the overlay with its base where technically supported.
+4. Compare kernel `vermagic`, exported symbols / modversion CRCs, module dependencies, and actual stock module inventory. Ten compiled `.ko` files do **not** imply the stock vendor partition contains exactly ten loadable modules.
+5. Establish the exact Qualcomm-Clang-10/Android-GCC-4.9 build and a genuinely unmodified baseline. Current Clang 14 / Android GCC 4.9 **binutils** build uses CI-only source compatibility edits.
+6. Only after technical validation, perform a controlled physical boot test with verified original `boot.img` recovery available.
+
+No Odin package or flash-ready image should be generated from these research outputs.
