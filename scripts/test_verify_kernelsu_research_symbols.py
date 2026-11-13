@@ -4,10 +4,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from verify_kernelsu_research_symbols import REQUIRED_CONFIG, REQUIRED_HOOK_SYMBOLS, audit
+from verify_kernelsu_research_symbols import (
+    REQUIRED_CONFIG,
+    REQUIRED_HOOK_SYMBOLS,
+    audit,
+)
 
 
 class KernelSUResearchSymbolAuditTests(unittest.TestCase):
+    PREINIT = [
+        "ffff000000002000 T ksu_preinit_init",
+        "ffff000000003000 R ksu_preinit_runner_start",
+        "ffff000000005000 R ksu_preinit_runner_end",
+    ]
+
     def check(self, config_lines, symbol_lines):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / ".config"
@@ -19,30 +29,46 @@ class KernelSUResearchSymbolAuditTests(unittest.TestCase):
     def test_valid_nonflashable_linked_hooks(self):
         result = self.check(REQUIRED_CONFIG, [
             f"ffff000000001000 T {name}" for name in REQUIRED_HOOK_SYMBOLS
-        ])
+        ] + self.PREINIT)
         self.assertTrue(result["KSU_CONFIG_VALID"])
         self.assertTrue(result["KSU_MANUAL_HOOKS_LINKED"])
+        self.assertTrue(result["KSU_PREINIT_EMBEDDED"])
+        self.assertEqual(result["KSU_PREINIT_BLOB_BYTES"], 8192)
         self.assertEqual(result["FLASH_ALLOWED"], "NO")
 
     def test_reject_missing_hook(self):
         result = self.check(REQUIRED_CONFIG, [
             f"ffff000000001000 T {name}" for name in REQUIRED_HOOK_SYMBOLS[:-1]
-        ])
+        ] + self.PREINIT)
         self.assertFalse(result["KSU_MANUAL_HOOKS_LINKED"])
         self.assertIn("ksu_handle_sys_read", result["MISSING_OR_NON_TEXT_HOOK_SYMBOLS"])
 
     def test_reject_nontext_symbol(self):
         result = self.check(REQUIRED_CONFIG, [
             f"ffff000000001000 D {name}" for name in REQUIRED_HOOK_SYMBOLS
-        ])
+        ] + self.PREINIT)
         self.assertFalse(result["KSU_MANUAL_HOOKS_LINKED"])
 
     def test_reject_unconfigured(self):
         result = self.check(REQUIRED_CONFIG[:-1], [
             f"ffff000000001000 T {name}" for name in REQUIRED_HOOK_SYMBOLS
-        ])
+        ] + self.PREINIT)
         self.assertFalse(result["KSU_CONFIG_VALID"])
         self.assertIn("CONFIG_PROCA_S_OS=y", result["MISSING_CONFIG"])
+
+    def test_reject_missing_preinit_runner(self):
+        result = self.check(REQUIRED_CONFIG, [
+            f"ffff000000001000 T {name}" for name in REQUIRED_HOOK_SYMBOLS
+        ])
+        self.assertFalse(result["KSU_PREINIT_EMBEDDED"])
+        self.assertIn("ksu_preinit_runner_start", result["MISSING_PREINIT_SYMBOLS"])
+
+    def test_reject_empty_preinit_runner(self):
+        zero_blob = self.PREINIT[:2] + ["ffff000000003000 R ksu_preinit_runner_end"]
+        result = self.check(REQUIRED_CONFIG, [
+            f"ffff000000001000 T {name}" for name in REQUIRED_HOOK_SYMBOLS
+        ] + zero_blob)
+        self.assertFalse(result["KSU_PREINIT_EMBEDDED"])
 
 
 if __name__ == "__main__":
