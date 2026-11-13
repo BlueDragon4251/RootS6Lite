@@ -1,0 +1,61 @@
+name: Samsung SM-P613 AOSP Clang 10 toolchain audit (NOT OEM)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-clang10-toolchain-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pinned AOSP Android 11 Clang r370808 (10.0.1)
+        run: |
+          set -euo pipefail
+          readonly REPO='https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86'
+          readonly TAG='refs/tags/android-11.0.0_r3'
+          readonly EXPECTED_COMMIT='252aba16f513a857bc923172f67b0e55e23de35f'
+          readonly DIR='_toolchains/aosp-clang10'
+          mkdir -p "$DIR" _evidence
+          git -C "$DIR" init
+          git -C "$DIR" remote add origin "$REPO"
+          git -C "$DIR" sparse-checkout init --cone
+          git -C "$DIR" sparse-checkout set clang-r370808
+          git -C "$DIR" -c protocol.version=2 fetch --depth 1 --filter=blob:none origin "$TAG"
+          test "$(git -C "$DIR" rev-parse FETCH_HEAD^{commit})" = "$EXPECTED_COMMIT"
+          git -C "$DIR" checkout --detach "$EXPECTED_COMMIT"
+          test "$(git -C "$DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          readonly CLANG="$DIR/clang-r370808/bin/clang"
+          test -x "$CLANG"
+          test "$(head -n 1 "$DIR/clang-r370808/AndroidVersion.txt")" = "10.0.1"
+          {
+            echo 'TOOLCHAIN=AOSP_ANDROID_11_CLANG_R370808'
+            echo 'TOOLCHAIN_ORIGIN=AOSP (NOT Samsung/Qualcomm proprietary llvm-arm-toolchain-ship/10.0)'
+            echo "SOURCE_COMMIT=$EXPECTED_COMMIT"
+            echo 'VERSION_EXPECTED=10.0.1'
+            echo 'KERNEL_COMPATIBILITY=UNTESTED'
+            echo 'FLASH_ALLOWED=NO'
+            "$CLANG" --version | head -n 2
+            sha256sum "$CLANG"
+            file "$CLANG"
+            ldd "$CLANG" || true
+          } | tee _evidence/aosp-clang10-toolchain-manifest.txt
+          "$CLANG" --version | grep -F 'clang version 10.0.1'
+          echo 'AOSP_CLANG10_EXECUTABLE=VERIFIED' | tee _evidence/status.txt
+
+      - name: Publish toolchain provenance only (no prebuilt binaries)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AOSP-CLANG10-FEASIBILITY-NOT-OEM-NOT-FLASHABLE
+          path: _evidence/
+          if-no-files-found: warn
+          retention-days: 14
