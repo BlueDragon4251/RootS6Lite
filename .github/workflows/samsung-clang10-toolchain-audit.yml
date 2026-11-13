@@ -49,6 +49,12 @@ jobs:
             ldd "$CLANG" || true
           } | tee _evidence/aosp-clang10-toolchain-manifest.txt
           "$CLANG" --version | grep -F 'clang version 10.0.1'
+          printf 'int roots6lite_clang10_smoke(void) { return 0; }\n' | "$CLANG" \
+            -target aarch64-linux-gnu -Werror=unknown-warning-option \
+            -Wno-unused-but-set-variable -Wno-align-mismatch \
+            -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4 \
+            -x c -c -o /dev/null -
+          echo 'KERNEL_KCFLAGS_COMPILER_SMOKE=PASSED' | tee -a _evidence/status.txt
           echo 'AOSP_CLANG10_EXECUTABLE=VERIFIED' | tee _evidence/status.txt
 
       - name: Publish toolchain provenance only (no prebuilt binaries)
