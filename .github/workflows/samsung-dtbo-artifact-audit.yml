@@ -10,7 +10,7 @@ on:
       run_id:
         description: 'Existing full-compile Actions run ID whose artifact should be inspected'
         required: false
-        default: '43368653577'
+        default: '43373071951'
 
 permissions:
   contents: read
@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      FULL_BUILD_RUN: ${{ inputs.run_id || '43368653577' }}
+      FULL_BUILD_RUN: ${{ inputs.run_id || '43373071951' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,6 +64,26 @@ jobs:
           test -s "$overlay"
           echo '=== Compiled source pair ==='
           sha256sum "$base" "$overlay" | tee _audit/source-pair.sha256
+          # Independent SHA256 reference values from the user's offline,
+          # read-only schema-2 audit of original P613XXS8CYE1 boot/recovery.
+          # Exact FDT bytes match the stock *embedded* blobs, NOT a verified
+          # installed DTBO partition or proof of kernel/module ABI compatibility.
+          readonly STOCK_BASE_SHA256='e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816'
+          readonly STOCK_OVERLAY_SHA256='aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12'
+          {
+            echo "$STOCK_BASE_SHA256  $base"
+            echo "$STOCK_OVERLAY_SHA256  $overlay"
+          } | sha256sum --check --status || {
+            echo '::error::Compiled FDT bytes differ from verified original stock boot/recovery embedded FDT reference hashes.'
+            exit 1
+          }
+          {
+            echo 'STOCK_BOOT_AND_RECOVERY_BASE_DTB=EXACT_SHA256_MATCH'
+            echo 'STOCK_RECOVERY_SAMSUNG_DTBO=EXACT_SHA256_MATCH'
+            echo 'STOCK_INSTALLED_DTBO_PARTITION=UNVERIFIED'
+            echo 'KERNEL_MODULE_ABI=UNVERIFIED'
+            echo 'FLASH_ALLOWED=NO'
+          } | tee _audit/stock-fdt-exact-match.txt
           set +e
           fdtoverlay -i "$base" -o "$merged" "$overlay" > _audit/fdtoverlay.log 2>&1
           code=$?
