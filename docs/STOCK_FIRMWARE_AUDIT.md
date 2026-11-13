@@ -15,10 +15,14 @@ py -3 .\scripts\audit_stock_firmware.py `
   --output "$env:USERPROFILE\Downloads\RootS6Lite-stock-audit.json"
 ```
 
-If an original, decompressed `dtbo.img` belonging to firmware **P613XXS8CYE1** is available, append:
+If an original, decompressed `dtbo.img` belonging to firmware **P613XXS8CYE1** is available, use this variant instead:
 
 ```powershell
-  --dtbo "$env:USERPROFILE\Downloads\flashen\dtbo.img"
+py -3 .\scripts\audit_stock_firmware.py `
+  --boot "$env:USERPROFILE\Downloads\flashen\boot.img" `
+  --recovery "$env:USERPROFILE\Downloads\flashen\recovery.img" `
+  --dtbo "$env:USERPROFILE\Downloads\flashen\dtbo.img" `
+  --output "$env:USERPROFILE\Downloads\RootS6Lite-stock-audit.json"
 ```
 
 Do not add `--dtbo` when the file is missing. A Samsung `.lz4` image must be decompressed to `.img` first; the tool detects LZ4 frame headers but does not decompress or modify the file.
