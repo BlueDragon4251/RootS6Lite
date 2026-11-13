@@ -1,0 +1,22 @@
+name: Android sparse super image inspector unit tests (offline only)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - 'scripts/inspect_android_super.py'
+      - 'scripts/test_inspect_android_super.py'
+      - '.github/workflows/test-android-super-inspector.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify read-only sparse and liblp parsing
+        run: python3 -m unittest discover -s scripts -p 'test_inspect_android_super.py' -v
