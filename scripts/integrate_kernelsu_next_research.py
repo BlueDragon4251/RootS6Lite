@@ -212,6 +212,31 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
         'if (path->mnt->mnt_flags & MNT_LOCKED)',
         1,
         "upstream/kernel/Kbuild Samsung RKP_NS_PROT mount backport",
+    )
+
+    # The upstream Kbuild unconditionally adds seccomp.filter_count to older
+    # task_struct/struct seccomp definitions. On Samsung 4.14, the existing
+    # put_seccomp_filter() interface is used by KernelSU's disable_seccomp()
+    # (the KSU_OPTIONAL_SECCOMP_FILTER_RELEASE branch is excluded). Thus the
+    # extra field is unused, but it changes thousands of exported GENKSYMS
+    # CRCs via task_struct, making existing OEM modules incompatible. Gate
+    # *only this unneeded backport* on the same missing-put_seccomp_filter
+    # condition the pinned Kbuild already uses for its newer release path.
+    kbuild_patched = replace_exact(
+        kbuild_patched,
+        'ifneq ($(shell grep -q "atomic_t filter_count;" $(srctree)/include/linux/seccomp.h; echo $$?),0)',
+        'ifneq ($(shell grep -wq "put_seccomp_filter" $(srctree)/kernel/seccomp.c '
+        '$(srctree)/include/linux/seccomp.h; echo $$?),0)\n'
+        'ifneq ($(shell grep -q "atomic_t filter_count;" $(srctree)/include/linux/seccomp.h; echo $$?),0)',
+        1,
+        "upstream/kernel/Kbuild condition unused seccomp.filter_count backport",
+    )
+    kbuild_patched = replace_exact(
+        kbuild_patched,
+        '$(srctree)/include/linux/seccomp.h)\nendif\n\n# security/selinux backports',
+        '$(srctree)/include/linux/seccomp.h)\nendif\nendif\n\n# security/selinux backports',
+        1,
+        "upstream/kernel/Kbuild close conditional seccomp compatibility gate",
     ).encode()
 
     # KernelSU Next's preinit runner bundles a newer nolibc implementation
