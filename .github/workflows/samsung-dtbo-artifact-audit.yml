@@ -54,6 +54,30 @@ jobs:
             echo 'No certificate metadata generated.'
           fi
 
+      - name: Verify actual research Image embeds the recorded IKCONFIG (no compile)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          from scripts.audit_stock_firmware import embedded_ikconfig_metadata
+
+          image = Path('_artifact/_out/arch/arm64/boot/Image').read_bytes()
+          config = Path('_artifact/_evidence/stock-generated.config').read_bytes()
+          result = embedded_ikconfig_metadata(image)
+          assert result["status"] == "found", result
+          expected = hashlib.sha256(config).hexdigest()
+          assert result["sha256"] == expected, (result["sha256"], expected)
+          assert result["selected"].get("CONFIG_KPROBES") == "n"
+          assert result["selected"].get("CONFIG_MODVERSIONS") == "y"
+          assert result["selected"].get("CONFIG_MODULE_SIG_FORCE") == "y"
+          print("EMBEDDED_IKCONFIG=EXACT_SHA256_MATCH")
+          print("IKCONFIG_SHA256=" + expected)
+          print("KPROBES=n MODVERSIONS=y MODULE_SIG_FORCE=y")
+          print("STOCK_KERNEL_CONFIG_MATCH=UNVERIFIED")
+          print("FLASH_ALLOWED=NO")
+          PY
+
       - name: Replay base plus Samsung overlay and print full error
         run: |
           set -euo pipefail
