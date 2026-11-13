@@ -10,8 +10,8 @@
 - Wi-Fi SM-P613, Android 14, P613XXS8CYE1, Linux
   `4.14.190-perf-28683246-abP613XXS8CYE1`.
 - Original boot SHA256
-  `06888f51722264ef33f2299e6ccaeFab9e6e0c7a96d51c5c8a74cfeeCd265655`
-  (case-insensitive; use the audited original file as authoritative).
+  `06888F51722264EF33F2299E6CCAEFAB9E6E0C7A96D51C5C8A74CFEECD265655`
+  (verify against the original local file before packaging).
 - Samsung public OSRC P613XXU4CWL1 is **older** than target firmware. A
   research compile does not establish binary, module ABI or boot compatibility.
 - Authenticated CYE1 IKCONFIG comparison: all configuration lines can be
