@@ -189,3 +189,36 @@ By anchoring the raw `__kcrctab` and immediately following `__kstrtab` sections 
 This is **direct evidence** that publicly available CWL1 sources are *not fully ABI-identical* to the target Samsung CYE1 kernel, even though the entire meaningful Kconfig, base DTB, and Wi-Fi board DTBO closely or exactly match. The KSU build's research `Module.symvers` remains byte-identical to the **older** research stock control, not the OEM 2025 CRC table. No stock Samsung module import/signing evidence exists yet. In particular, newly exported names suggest lockscreen USB protection code that the old OSRC does not expose; do not claim security-feature equivalence. `vermagic`, OEM compiler, bootability and Root all remain unverified. **FLASH_ALLOWED=NO**.
 
 The repeatable extract/CRC tools and ten synthetic regression tests are committed, and the tests passed in real [self-test Actions run 43425697775](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43425697775). The original boot/kernel bytes were never uploaded to GitHub Actions or distributed as build artifacts.
+
+### 2026-11-13 — CYE1 AP inventory and authenticated OEM compiler fingerprint
+
+The owner extracted **all four** logical partitions (`system`, `vendor`,
+`product`, `odm`) from the original CYE1 AP `super.img.lz4`, and 7-Zip
+successfully read their Ext directory listings. A complete listing search for
+`modules|modprobe|\\.ko` found **no shipping `.ko` files** in those
+partitions, although two 7-byte `modprobe` entries exist. A separate,
+**whole-file SHA256-verified original boot.img** audit recovered its gzip
+`newc` ramdisk and found no `.ko`, `modules.load`, or `.rc` entries
+(9 real CPIO entries). See [original OEM ABI audit](CYE1_STOCK_EXPORT_ABI.md).
+Absence of original modules in these inspected normal-boot locations removes
+one *identified* module-import compatibility check; it does not establish
+stock kernel function equivalence or mean the ten CI `.ko` modules need
+shipping. No firmware bytes were uploaded to GitHub.
+
+The unmodified CYE1 ARM64 `Image`, itself extracted from the verified boot
+file (SHA256 `14defad3fe7854da3cadc43b2c01e96a48a27a4a0e847043c989c45c66fb8228`),
+contains the **exact embedded OEM version/compiler string**:
+
+```text
+Linux version 4.14.190-perf-28683246-abP613XXS8CYE1 (dpi@SWDM8403) (clang version 10.0.7 for Android NDK, GNU ld (binutils-2.27-bd24d23f) 2.27.0.20170315) #1 SMP PREEMPT Wed May 7 16:18:42 KST 2025
+```
+
+This identifies **Snapdragon LLVM/Clang 10.0.7 for Android NDK** (Qualcomm
+SDLLVM 10.0.7) with GNU ld 2.27 `binutils-2.27-bd24d23f`, **not just an
+unspecified Clang major version**. AOSP Clang 10 from research CI is not
+claimed equivalent. Qualcomm's official [Snapdragon LLVM Compiler download](https://www.qualcomm.com/developer/software/snapdragon-llvm-compiler)
+requires login/licensing; a third-party mirrored proprietary compiler has
+been located for *provenance research only* and **is not integrated, cached,
+redistributed or trusted as an official binary**. A verified, appropriately
+licensed compiler package and matching exact-toolchain baseline build remain
+outstanding compatibility gates. **FLASH_ALLOWED=NO**.
