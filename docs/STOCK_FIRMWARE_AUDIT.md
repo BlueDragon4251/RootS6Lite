@@ -197,3 +197,15 @@ The binary **base DTB and board DTBO each passed exact original CYE1 stock-refer
 Additionally, BOTH hard-check full kernel builds finished **SUCCESS**: [AOSP10 43398430871](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43398430871) and [APT14 43398430862](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43398430862). Their actual job logs record `BUILD_EXIT_CODE=0`, `BASE_DTB_BINARY_EQUAL_STOCK=YES`, `DEVICE_DTBO_BINARY_EQUAL_STOCK=YES`, `IMAGE_BINARY_EQUAL_STOCK=NO`, `MODULES_INSTALL_EXIT_CODE=0` and ten signed modules.
 
 This is an **offline parser and byte-equality result**, not a verified stock-compatible boot image. Exact Qualcomm OEM compiler, module CRC parity with stock, actual bootloader behavior and physical stock-baseline boot remain open. No flashing approval.
+
+
+### 2026-11-13 update: real OEM export ABI no longer entirely unknown
+
+The original CYE1 `boot.img` binary was supplied and SHA256-verified against the previously documented original. Its compressed kernel was extracted independently (matching known 48,832,528-byte ARM64 Image SHA256); the stock kernel **was not committed to this repo**. A new reproducible [OEM export-CRC analysis](CYE1_STOCK_EXPORT_ABI.md) against the earlier pinned AOSP Clang10 unmodified CWL1 research build recovered the actual 2025 `__kcrctab` and `__kstrtab` name mapping:
+
+- Stock CYE1: **12,530** built-in exports; research: **12,509**.
+- **12,484 shared symbols have identical CRCs**, **25 have changed CRCs**, and **21 names are new in stock CYE1** (no removed shared names).
+- Changed/new exports cluster in USB/OTG notification, USB lockscreen restriction and battery/charging interfaces. Details: [exact JSON report](CYE1_STOCK_EXPORT_ABI.json).
+- Source-script [CI run 43425697775](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43425697775) passed all ten new synthetic extraction/CRC-mapping tests.
+
+This replaces older statements that *no* original CYE1 exported CRC information exists. It does **not** prove source or full module ABI equality: original vendor-module imports and certificate trust remain unverified, 25 CRCs genuinely differ, 21 target exports are absent from the old source, compiler/image/release suffix differ, and no boot test took place. The potential USB-restriction security-code gap must be investigated. **No flash approval.**
