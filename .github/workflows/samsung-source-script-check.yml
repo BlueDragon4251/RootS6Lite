@@ -7,6 +7,8 @@ on:
       - 'scripts/verify_samsung_source.py'
       - 'scripts/audit_stock_firmware.py'
       - 'scripts/test_audit_stock_firmware.py'
+      - 'scripts/export_stock_ikconfig.py'
+      - 'scripts/test_export_stock_ikconfig.py'
       - 'docs/SAMSUNG_SOURCE.md'
   pull_request:
     paths:
@@ -14,6 +16,8 @@ on:
       - 'scripts/verify_samsung_source.py'
       - 'scripts/audit_stock_firmware.py'
       - 'scripts/test_audit_stock_firmware.py'
+      - 'scripts/export_stock_ikconfig.py'
+      - 'scripts/test_export_stock_ikconfig.py'
       - 'docs/SAMSUNG_SOURCE.md'
   workflow_dispatch:
 permissions:
@@ -37,3 +41,6 @@ jobs:
 
       - name: Test offline stock boot and DTBO auditor
         run: python3 -m unittest discover -s scripts -p 'test_audit_stock_firmware.py' -v
+
+      - name: Test opt-in offline IKCONFIG exporter
+        run: python3 -m unittest discover -s scripts -p 'test_export_stock_ikconfig.py' -v
