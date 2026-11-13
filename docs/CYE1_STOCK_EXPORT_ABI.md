@@ -61,6 +61,8 @@ and `sec_bat_set_temp_control_test`. The **21 newer OEM exports** include
 `usb_check_allowlist_for_lockscreen_enabled_id`, `send_usb_restrict_uevent`,
 `get_full_capacity` and `sec_bat_recov_full_capacity`.
 
+Read-only search across the **entire extracted CWL1 Samsung source** found **no source-name match for 19 of the 21 newly exported CYE1 symbols**. The other two (`sec_bat_check_full_capacity` and `sec_bat_recov_full_capacity`) exist only as `static` battery-file functions in the older tree, **not as exported symbols**. In particular, the newer USB lockscreen-restriction APIs are absent. This is a concrete source-version gap, not merely a compiler optimization effect.
+
 These findings establish a **real source/ABI delta** between the authentic
 2025 Samsung firmware and the older public OSRC, despite the identical
 reconciled Kconfig and byte-identical base DTB/board DTBO. Some new symbols
