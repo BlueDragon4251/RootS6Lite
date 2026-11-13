@@ -79,9 +79,11 @@ jobs:
             _evidence/
             _out/.config
             _out/arch/arm64/boot/Image
+            _out/Module.symvers
+            _out/System.map
             _out/arch/arm64/boot/dts/**/*.dtb
             _out/arch/arm64/boot/dts/**/*.dtbo
             _out/**/*.ko
-            _signed_modules/**/*.ko
+            _signed_modules/lib/modules/*/kernel/**/*.ko
           if-no-files-found: warn
           retention-days: 14

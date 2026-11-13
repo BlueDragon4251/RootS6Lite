@@ -134,3 +134,16 @@ All other lines of the two complete configs matched in the initial text diff, no
 The research compile workflow now explicitly reconciles the CYE1 security configuration: start from official CWL1 Samsung defconfig, preserve its unmodified config in CI evidence, enable FIVE, PROCA and PROCA_S_OS via the Linux kernel scripts/config, run make olddefconfig to resolve Kconfig dependencies, and assert final settings including TZIC disabled. This is a **research build adjustment**; no vendor security safeguards are deliberately removed. New full CI must prove whether the older source successfully compiles with these stock-selected options.
 
 Do not publish the complete original user-extracted config without user review; this documentation records only the named differing flags and verified hashes. No flash permission.
+
+
+### CYE1 security-profile CI result — run 43386729110 successful
+
+[Full research build 43386729110](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43386729110), commit [1d3b578](https://github.com/BlueDragon4251/RootS6Lite/commit/1d3b578838542a3e0d40ed2fa5f85622cd01478e), **passed**. The actual job logs record CYE1 security profile FIVE=y, PROCA=y, PROCA_S_OS=y, TZIC=n, build exit 0, modules_install exit 0 and 10 signed modules.
+
+The emitted reconciled research config is **182,304 bytes; SHA256 3345e9d95ccc30da221c345f3f25fb974e42d890c2f630bb52fe8be2ef9716df**. A full byte-level diff against the user's original CYE1 IKCONFIG (182,359 bytes) now shows **exactly one line missing**: the explicitly disabled comment "# CONFIG_DISABLE_LOCKSCREEN_USB_RESTRICTION is not set", which is absent from older CWL1 Kconfig. Removing only that comment from the authenticated CYE1 config yields **exactly the same SHA256** as the CI-generated reconciled config. No other Kconfig line differs. This is a narrow, strong **configuration** parity result, not kernel binary/ABI/boot parity.
+
+The new raw research Image remains **48,826,384 bytes** (SHA256 b22e62487910c79d059312ccd9c04c639c3b33df5e7b7952061ab5efaf5acaf3), whereas the original firmware's raw Image was 48,832,528 bytes (SHA256 14defad3fe7854da3cadc43b2c01e96a48a27a4a0e847043c989c45c66fb8228). The reference toolchain and Samsung source code revision still differ. The compilation still logs an unversioned-export warning for gsi_write_channel_scratch, requiring symbol/ABI investigation. Samsung's checked-in Kconfig also emits CR-character and unsupported-choice-default warnings during olddefconfig, to be tracked separately.
+
+[Run 43385818357](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43385818357) separately proved that make modules_install signs all 10 research modules with an ephemeral CI certificate; private key was not uploaded. Archive inspection exposed a duplicate unsigned copy under a modules/build symlink included by the broad upload glob; narrow the artifact glob to kernel subdirectory to keep signed and unsigned module classes separate. This is an artifact-presentation issue, not a signing-stage failure.
+
+**Remaining blocks:** stock/CI ABI and exported-symbol CRC matching, root of module signing trust on target firmware, exact Samsung/Qualcomm compiler, original firmware boot packaging and controlled physical baseline boot. No flash permit.

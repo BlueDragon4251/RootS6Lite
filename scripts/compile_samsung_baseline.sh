@@ -146,6 +146,11 @@ if grep -Eq '^CONFIG_TZIC(=|_)' "$OUT/.config"; then
 fi
 cp "$OUT/.config" "$EVIDENCE/stock-generated.config"
 sha256sum "$OUT/.config" > "$EVIDENCE/config.sha256"
+# Full original CYE1 IKCONFIG is byte-identical to this result after dropping
+# only one explicitly disabled, source-absent USB-lockscreen config comment.
+# Pin the expected reconciled hash so future baseline drift is visible.
+echo "3345e9d95ccc30da221c345f3f25fb974e42d890c2f630bb52fe8be2ef9716df  $OUT/.config" | sha256sum -c -
+echo "CYE1_CONFIG_PARITY=ALL_CONFIG_LINES_MATCH_EXCEPT_ONE_DISABLED_SOURCE_ABSENT_OPTION" | tee -a "$EVIDENCE/status.txt"
 grep -F 'CONFIG_KALLSYMS=y' "$OUT/.config"
 grep -F '# CONFIG_KPROBES is not set' "$OUT/.config"
 echo "STOCK_SECURITY_PROFILE=FIVE_y_PROCA_y_PROCA_S_OS_y_TZIC_n" | tee -a "$EVIDENCE/status.txt"
@@ -169,7 +174,10 @@ if (( code != 0 )); then
 fi
 
 test -s "$OUT/arch/arm64/boot/Image"
+test -s "$OUT/Module.symvers"
+test -s "$OUT/System.map"
 sha256sum "$OUT/arch/arm64/boot/Image" >> "$EVIDENCE/provenance.txt"
+sha256sum "$OUT/Module.symvers" "$OUT/System.map" >> "$EVIDENCE/provenance.txt"
 
 # Research reproducibility: CONFIG_MODULE_SIG enables a newly generated
 # X.509 key pair in each clean build. Export ONLY public cert metadata.
