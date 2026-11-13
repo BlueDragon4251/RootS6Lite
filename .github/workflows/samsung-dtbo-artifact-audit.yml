@@ -1,0 +1,89 @@
+name: SM-P613 compiled DTBO artifact smoke test (NO FLASH)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-dtbo-artifact-audit.yml'
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Existing full-compile Actions run ID whose artifact should be inspected'
+        required: false
+        default: '43368653577'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FULL_BUILD_RUN: ${{ inputs.run_id || '43368653577' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libfdt test tools (no kernel compilation)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends device-tree-compiler
+
+      - name: Download already-built non-flashable research artifact
+        run: |
+          set -euo pipefail
+          mkdir -p _artifact _audit
+          gh run download "$FULL_BUILD_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name SM-P613-COMPILER-EXPERIMENT-NOT-FLASHABLE --dir _artifact
+          echo "Artifact from run $FULL_BUILD_RUN"
+          find _artifact/_evidence -maxdepth 1 -type f -printf '%f\n' | sort
+          echo '=== Original build status ==='
+          sed -n '1,50p' _artifact/_evidence/status.txt
+          echo '=== Saved libfdt error log (if generated) ==='
+          if test -f _artifact/_evidence/dtbo-overlay-apply.log; then
+            sed -n '1,100p' _artifact/_evidence/dtbo-overlay-apply.log
+          else
+            echo 'No overlay-application log; failure preceded the merge command.'
+          fi
+          echo '=== Public signing certificate fingerprint (if generated) ==='
+          if test -f _artifact/_evidence/module-signing-cert.txt; then
+            sed -n '1,10p' _artifact/_evidence/module-signing-cert.txt
+          else
+            echo 'No certificate metadata generated.'
+          fi
+
+      - name: Replay base plus Samsung overlay and print full error
+        run: |
+          set -euo pipefail
+          base='_artifact/_out/arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb'
+          overlay='_artifact/_out/arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo'
+          merged='_audit/NONFLASHABLE-merged-preview.dtb'
+          test -s "$base"
+          test -s "$overlay"
+          echo '=== Compiled source pair ==='
+          sha256sum "$base" "$overlay" | tee _audit/source-pair.sha256
+          set +e
+          fdtoverlay -i "$base" -o "$merged" "$overlay" > _audit/fdtoverlay.log 2>&1
+          code=$?
+          set -e
+          echo "FDTO_OVERLAY_EXIT_CODE=$code" | tee _audit/status.txt
+          sed -n '1,160p' _audit/fdtoverlay.log
+          if (( code != 0 )); then
+            echo 'Libfdt overlay application failed; no flash compatibility is claimed.'
+            exit "$code"
+          fi
+          test -s "$merged"
+          sha256sum "$merged" | tee _audit/merged-preview.sha256
+          fdtget -t s "$merged" / compatible | tee _audit/merged-compatible.txt
+          echo 'Source-pair libfdt merge succeeded; stock DTBO/ABI still UNVERIFIED.'
+
+      - name: Upload diagnostic evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SM-P613-DTBO-DIAGNOSTICS-NO-FLASH
+          path: _audit/
+          if-no-files-found: warn
+          retention-days: 14
