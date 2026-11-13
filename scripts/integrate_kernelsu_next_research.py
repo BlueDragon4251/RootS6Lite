@@ -177,6 +177,29 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
     if not (link_target / "Kbuild").is_file():
         raise ValueError("Pinned upstream kernel/Kbuild missing")
 
+    # The pinned upstream Kbuild detects manual hooks solely by grepping for
+    # `ksu_handle_sys_reboot` in kernel/reboot.c. However, the same pinned
+    # upstream revision does not define that callback anymore. Preserve the
+    # stop-on-missing-hooks gate by checking the *actual* four verified hook
+    # sites instead. This is an explicitly recorded CI-only Kbuild adaptation,
+    # never a fabricated reboot hook, silent bypass, or change to Samsung ZIP.
+    kbuild = link_target / "Kbuild"
+    kbuild_original = kbuild.read_bytes()
+    kbuild_old = (
+        'HAVE_KSU_HOOK := $(shell grep -q "ksu_handle_sys_reboot" '
+        '$(srctree)/kernel/reboot.c && echo 0 || echo 1)'
+    )
+    kbuild_new = (
+        'HAVE_KSU_HOOK := $(shell grep -q "ksu_handle_execveat" '
+        '$(srctree)/fs/exec.c && '
+        'grep -q "ksu_handle_faccessat" $(srctree)/fs/open.c && '
+        'grep -q "ksu_handle_sys_read" $(srctree)/fs/read_write.c && '
+        'grep -q "ksu_handle_stat" $(srctree)/fs/stat.c && echo 0 || echo 1)'
+    )
+    kbuild_patched = replace_exact(
+        kbuild_original.decode(), kbuild_old, kbuild_new, 1, "upstream/kernel/Kbuild"
+    ).encode()
+
     # All anchor checks complete: only now mutate ephemeral extracted files.
     records = ["RESEARCH_ONLY=YES", "FLASH_ALLOWED=NO", "KPROBES_REMAIN_DISABLED=YES"]
     for path, new_content in edits.items():
@@ -184,6 +207,12 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
         path.chmod(path.stat().st_mode | 0o200)
         path.write_bytes(new_content)
         records.append(f"{path.relative_to(source)} BEFORE={sha256(original)} AFTER={sha256(new_content)}")
+    kbuild.chmod(kbuild.stat().st_mode | 0o200)
+    kbuild.write_bytes(kbuild_patched)
+    records.append(
+        "upstream/kernel/Kbuild CI_HOOK_DETECTOR_FIX "
+        f"BEFORE={sha256(kbuild_original)} AFTER={sha256(kbuild_patched)}"
+    )
     link.symlink_to(link_target.resolve(), target_is_directory=True)
     records.append(f"drivers/kernelsu SYMLINK={os.readlink(link)}")
     records.append("HOOKS=execve,execveat,compat_execve,compat_execveat,faccessat,read,newfstatat")
