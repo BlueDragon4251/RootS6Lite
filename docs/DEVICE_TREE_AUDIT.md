@@ -38,7 +38,9 @@ The research CI now requires both the base `atoll-ab-idp.dtb` and the specific S
 
 The metadata gate reads the compiled FDT with `fdtget` and validates the expected Samsung model text, the overlay board-id `0x22 0x0` (decimal 34 and 0), and compatible `qcom,atoll-ab-idp` base and overlay identifiers.
 
-An Actions run must confirm these checks. This does **not** establish that the DTB/DTBO matches running firmware `P613XXS8CYE1`.
+[Run 43366096008](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43366096008) **passed** the new checks. Its downloaded artifact contains the 442,711-byte Qualcomm base DTB, 184,681-byte Samsung Wi-Fi EUR overlay, and ten modules. All 12 individual DTB/DTBO/module SHA256 checks passed when rechecked against the unpacked artifact. The overlay reports the expected model and board ID `<34 0>` (`0x22 0`). This still does **not** establish that the DTB/DTBO matches running firmware `P613XXS8CYE1`.
+
+The same full build log contains **881 DTC warning lines**: `avoid_default_addr_size` (228), `unit_address_vs_reg` (175), `graph_port` (158), `reg_format` (114), and other groups. These are not suppressed or declared harmless; a separate actual base+overlay merge test is required to distinguish standalone-overlay parse warnings from problems in the resulting tree.
 
 ## Unfinished stock-compatibility checks
 
