@@ -16,8 +16,10 @@ logical partition filesystem. Its magic begins `3a ff 26 ed`. Simply running
 reads the official AOSP sparse format and liblp geometry/metadata with the
 Python standard library. It validates header and metadata-table SHA256 digests,
 checks partitions/extents against bounds, and reads only the sparse headers and
-required metadata. It does **not** expand an 8+ GB raw image, extract files,
-execute OEM software, or make any changes to the firmware.
+required metadata when listing. It does **not** expand an 8+ GB raw image,
+execute OEM software, or make any changes to the original firmware. An explicit
+`--extract-partition` command can copy just one selected logical partition to
+a **new** output file, refusing to overwrite pre-existing files.
 
 From Windows CMD in the firmware directory:
 
@@ -30,6 +32,19 @@ The script should list the logical partitions (`vendor`, `odm`, or
 `vendor_dlkm`, depending on the exact firmware). Share the **partition names
 and sizes**, not the multi-gigabyte firmware image. Stop and report any
 format or checksum error; never bypass the checks.
+
+To extract only the OEM module-bearing partitions of CYE1 once the metadata
+checksum and names have been verified (approximately 973 MB + 4.4 MB):
+
+```bat
+py inspect_android_super.py "verify_cye1\super.img" --extract-partition vendor --output "verify_cye1\vendor.img"
+py inspect_android_super.py "verify_cye1\super.img" --extract-partition odm --output "verify_cye1\odm.img"
+```
+
+These commands copy only the listed partitions, produce SHA256 digests, do
+not need administrator permissions, and never write to the attached tablet.
+If any output or `.partial` file already exists, review it rather than
+overwriting it.
 
 **Next research gate:** inspect only the selected vendor module-containing
 partitions, correlate each OEM `.ko` file's actual undefined symbols and

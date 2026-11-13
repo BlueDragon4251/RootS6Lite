@@ -81,6 +81,40 @@ class SuperInspectorTests(unittest.TestCase):
         self.assertEqual(result["type"], "Android sparse")
         self.assertEqual(result["partitions"][0]["name"], "vendor")
 
+    def test_extract_only_vendor_from_sparse_without_expanding_super(self):
+        self.path.write_bytes(build_sparse(build_raw()))
+        reader = super_image.SparseReader(self.path)
+        self.addCleanup(reader.close)
+        vendor = super_image.inspect_super(reader)["partitions"][0]
+        output = Path(self.temp.name) / "vendor.img"
+        sha = super_image.extract_partition(reader, vendor, output)
+        expected = b"\x11\x22\x33\x44" * 1024
+        self.assertEqual(output.read_bytes(), expected)
+        self.assertEqual(sha, hashlib.sha256(expected).hexdigest())
+        self.assertFalse((Path(self.temp.name) / "vendor.img.partial").exists())
+
+    def test_extract_refuses_existing_target(self):
+        self.path.write_bytes(build_sparse(build_raw()))
+        reader = super_image.SparseReader(self.path)
+        self.addCleanup(reader.close)
+        vendor = super_image.inspect_super(reader)["partitions"][0]
+        output = Path(self.temp.name) / "vendor.img"
+        output.write_bytes(b"keep existing user data")
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            super_image.extract_partition(reader, vendor, output)
+        self.assertEqual(output.read_bytes(), b"keep existing user data")
+
+    def test_extract_refuses_external_physical_device(self):
+        self.path.write_bytes(build_sparse(build_raw()))
+        reader = super_image.SparseReader(self.path)
+        self.addCleanup(reader.close)
+        vendor = super_image.inspect_super(reader)["partitions"][0]
+        vendor["extents"][0]["device_index"] = 1
+        output = Path(self.temp.name) / "vendor.img"
+        with self.assertRaisesRegex(ValueError, "external block device"):
+            super_image.extract_partition(reader, vendor, output)
+        self.assertFalse(output.exists())
+
     def test_rejects_truncated_raw_chunk(self):
         # A truncated trailing SKIP has no physical data, so corrupt RAW instead.
         data = build_sparse(build_raw())

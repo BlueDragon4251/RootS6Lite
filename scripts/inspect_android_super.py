@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only, streaming Android sparse + liblp super partition inspector.
+"""Streaming Android sparse + liblp super image inspector and extractor.
 
-Uses official AOSP libsparse and liblp metadata layout. It never extracts,
-modifies, flashes or tries to mount the supplied image. No third-party Python
-dependencies and no conversion to a second multi-gigabyte raw image.
+Uses official AOSP libsparse and liblp metadata layout. It never modifies,
+flashes or tries to mount the supplied image. Optional single-partition
+extraction creates a new file, refusing to overwrite existing data. No
+third-party Python dependencies or full raw-super image conversion.
 """
 
 import argparse
@@ -221,14 +222,61 @@ def inspect_super(reader: SparseReader) -> dict:
             "physical_device_count": len(devices), "partitions": results}
 
 
+def extract_partition(reader: SparseReader, partition: dict, output: Path) -> str:
+    """Copy one validated logical partition; never overwrite an existing file."""
+    require(not output.exists(), f"output already exists: {output}")
+    require(partition["size_bytes"] > 0, "refusing to extract empty partition")
+    for extent in partition["extents"]:
+        require(extent["kind"] == "zero" or extent["device_index"] == 0,
+                "cannot extract a partition backed by an external block device")
+    partial = output.with_name(output.name + ".partial")
+    digest = hashlib.sha256()
+    written = 0
+    chunk_size = 1024 * 1024
+    with partial.open("xb") as destination:
+        for extent in partition["extents"]:
+            count = extent["bytes"]
+            physical = (extent["physical_sector"] or 0) * SECTOR_SIZE
+            copied = 0
+            while copied < count:
+                take = min(chunk_size, count - copied)
+                if extent["kind"] == "zero":
+                    block = b"\x00" * take
+                else:
+                    block = reader.read(physical + copied, take)
+                destination.write(block)
+                digest.update(block)
+                copied += take
+                written += take
+    require(written == partition["size_bytes"], "partition copy is incomplete")
+    partial.rename(output)
+    return digest.hexdigest()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", type=Path, help="original super.img (sparse or raw)")
     parser.add_argument("--json", action="store_true", help="print detailed JSON instead")
+    parser.add_argument("--extract-partition", metavar="NAME",
+                        help="copy only the named logical partition into a new file")
+    parser.add_argument("--output", type=Path, help="output path for --extract-partition")
     args = parser.parse_args()
+    if args.output and not args.extract_partition:
+        parser.error("--output requires --extract-partition")
+    if args.extract_partition and not args.output:
+        parser.error("--extract-partition requires --output")
     reader = SparseReader(args.image)
     try:
         report = inspect_super(reader)
+        if args.extract_partition:
+            match = next((p for p in report["partitions"]
+                          if p["name"] == args.extract_partition), None)
+            require(match is not None,
+                    f"partition not found: {args.extract_partition}")
+            digest = extract_partition(reader, match, args.output)
+            print(f"Extracted {match['name']} to {args.output}")
+            print(f"Bytes: {match['size_bytes']:,}, SHA256: {digest}")
+            return
     finally:
         reader.close()
     if args.json:
