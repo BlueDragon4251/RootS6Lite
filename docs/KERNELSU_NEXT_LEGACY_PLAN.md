@@ -85,3 +85,14 @@ them could introduce pointer bugs or bootloops.
 **Current stop condition for device actions:** tablet unavailable and
 stock-baseline boot not verified. CI/research/documentation can progress
 without a device and without existing root.
+
+
+## Independent offline integration experiment — 2026-11-13 (not a boot test)
+
+The physical baseline gate above is **still not satisfied**. To make progress while the tablet is unavailable, a separate [opt-in Legacy CI workflow](../.github/workflows/samsung-kernelsu-next-legacy-compile.yml) and [strict source adapter](../scripts/integrate_kernelsu_next_research.py) were prepared without changing stock source ZIP, baseline build behavior, Android, or the tablet. The independent experimental [run 43405563445](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43405563445) was started; its actual build result must be checked separately.
+
+The integration first **generates and SHA256-verifies the exact CYE1 stock .config without KSU**, then adds upstream `Kconfig/Kbuild` and applies precisely anchored manual hooks only in the temporary runner tree, re-runs `olddefconfig` and confirms `CONFIG_KSU=y`, `CONFIG_KSU_MANUAL_HOOK=y`, `CONFIG_KPROBES=n`, stock FIVE/PROCA, forced module signing and SELinux. Every modified source file receives a before/after SHA256 record. The pinned Git upstream SHA is verified before use; no floating install script, new repository, release, flashed boot image or privileged on-device operation.
+
+**Important upstream-versus-doc API drift:** The official website's sample `ksu_handle_sys_read(fd, &buf, &count)` does not match the actually pinned `legacy` source at `e5f5ec9`, which defines `void ksu_handle_sys_read(unsigned int fd)`. The sample also references `ksu_handle_sys_reboot`, which is absent at that commit. Therefore, the experimental adapter uses verified upstream ABI in `fs/read_write.c`, **does not invent a reboot callback**, and keeps all compatibility assumptions explicitly unverified. It also passes a **real addressable `int` variable** for the `AT_FDCWD` exec hook, instead of the website example's unsafe integer-to-pointer cast. Native and compat `execve`/`execveat` codepaths are considered; formal function/ABI correctness and runtime tests remain open.
+
+Even if the new KSU experiment compiles, **stock ABI equality, bootability, KSU root behavior and Samsung boot-chain compatibility are NOT proven**. Do not merge the PR or distribute an Odin-flashable image on the strength of the CI run.
