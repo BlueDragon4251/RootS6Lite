@@ -186,3 +186,14 @@ The actual full research builds at [AOSP10 run 43395956545](https://github.com/B
 AOSP Clang10's Image is 2,048 bytes closer in size to stock, **which is not evidence of better ABI or boot compatibility**. Both Image hashes differ from stock. The two research `Module.symvers` are byte-identical (including the unresolved zero CRC), but **stock symbol CRCs remain unavailable**. Binary module signer validity establishes only the validity under that specific build's ephemeral cert, not acceptance by stock Android or bootability.
 
 [Commit a8ecb9d](https://github.com/BlueDragon4251/RootS6Lite/commit/a8ecb9d6a86942a52c936f53dcbb83734483adbb) adds automated build checks against the authenticated stock base DTB/DTBO SHA256 values and explicitly records the raw Image SHA/size equality result as `IMAGE_BINARY_EQUAL_STOCK`. A successful checksum comparison is **not** a waiver for the outstanding standard-libfdt merge diagnostic, original OEM toolchain, stock ABI, or actual device boot. The follow-up CI outcome must be read separately.
+
+
+### Rebuilt AOSP libufdt offline overlay test — 2026-11-13
+
+[Run 43404373567](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43404373567) **SUCCESS** using Android `system/libufdt` built from verified official source commit `c2169a1cb29bf0f5494f4e8b67ef662918e66679`. The compiler stage passed with `-Wall -Werror` and fetched the research DTB/DTBO from the already-completed pinned AOSP Clang10 [run 43398430871](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43398430871).
+
+The binary **base DTB and board DTBO each passed exact original CYE1 stock-reference SHA256 verification**, `fdtoverlay` returned exit 1 as before, but newly compiled Android `ufdt_apply_overlay` returned exit 0 and produced a valid, nonempty merged FDT with expected Qualcomm root compatibles. A diagnostic artifact was saved as `SM-P613-ANDROID-LIBUFDT-AUDIT-NOT-FLASHABLE` (ID `14026233053`). Detailed source and semantics: [device tree audit](DEVICE_TREE_AUDIT.md).
+
+Additionally, BOTH hard-check full kernel builds finished **SUCCESS**: [AOSP10 43398430871](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43398430871) and [APT14 43398430862](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43398430862). Their actual job logs record `BUILD_EXIT_CODE=0`, `BASE_DTB_BINARY_EQUAL_STOCK=YES`, `DEVICE_DTBO_BINARY_EQUAL_STOCK=YES`, `IMAGE_BINARY_EQUAL_STOCK=NO`, `MODULES_INSTALL_EXIT_CODE=0` and ten signed modules.
+
+This is an **offline parser and byte-equality result**, not a verified stock-compatible boot image. Exact Qualcomm OEM compiler, module CRC parity with stock, actual bootloader behavior and physical stock-baseline boot remain open. No flashing approval.
