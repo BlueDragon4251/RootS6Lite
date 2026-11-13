@@ -214,6 +214,37 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
         "upstream/kernel/Kbuild Samsung RKP_NS_PROT mount backport",
     ).encode()
 
+    # KernelSU Next's preinit runner bundles a newer nolibc implementation
+    # which expects linux/time_types.h definitions. Samsung's legacy 4.14
+    # UAPI provides neither that header nor __kernel_timespec. Defining the
+    # exact 64-bit UAPI layouts in the *temporary pinned upstream checkout*
+    # fixes the missing type, rather than suppressing -Wvisibility. Never
+    # apply this shim if a newer kernel already supplies the UAPI types.
+    if (source / "include/uapi/linux/time_types.h").exists():
+        raise ValueError("Unexpected modern time_types.h: legacy time shim unsafe")
+    if "__kernel_timespec" in (source / "include/uapi/linux/time.h").read_text():
+        raise ValueError("Samsung time UAPI already defines __kernel_timespec")
+    legacy_nolibc_time = upstream / "kernel/preinit/runner/nolibc/time.h"
+    legacy_nolibc_time_original = legacy_nolibc_time.read_bytes()
+    legacy_nolibc_time_patched = replace_exact(
+        legacy_nolibc_time_original.decode(),
+        "#include <linux/time.h>\n\nstatic __inline__\n",
+        "#include <linux/time.h>\n\n"
+        "/* Samsung 4.14 UAPI lacks linux/time_types.h. These are the\n"
+        " * exact 64-bit kernel UAPI timespec/itimerspec layouts needed\n"
+        " * by upstream KernelSU Next's bundled nolibc fallback helpers. */\n"
+        "struct __kernel_timespec {\n"
+        "\tlong long tv_sec;\n"
+        "\tlong long tv_nsec;\n"
+        "};\n"
+        "struct __kernel_itimerspec {\n"
+        "\tstruct __kernel_timespec it_interval;\n"
+        "\tstruct __kernel_timespec it_value;\n"
+        "};\n\nstatic __inline__\n",
+        1,
+        "upstream/preinit/runner/nolibc/time.h legacy 4.14 UAPI",
+    ).encode()
+
     # All anchor checks complete: only now mutate ephemeral extracted files.
     records = ["RESEARCH_ONLY=YES", "FLASH_ALLOWED=NO", "KPROBES_REMAIN_DISABLED=YES"]
     for path, new_content in edits.items():
@@ -226,6 +257,13 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
     records.append(
         "upstream/kernel/Kbuild CI_HOOK_DETECTOR_FIX "
         f"BEFORE={sha256(kbuild_original)} AFTER={sha256(kbuild_patched)}"
+    )
+    legacy_nolibc_time.chmod(legacy_nolibc_time.stat().st_mode | 0o200)
+    legacy_nolibc_time.write_bytes(legacy_nolibc_time_patched)
+    records.append(
+        "upstream/preinit/runner/nolibc/time.h SAMSUNG_4_14_UAPI_TIME64_SHIM "
+        f"BEFORE={sha256(legacy_nolibc_time_original)} "
+        f"AFTER={sha256(legacy_nolibc_time_patched)}"
     )
     link.symlink_to(link_target.resolve(), target_is_directory=True)
     records.append(f"drivers/kernelsu SYMLINK={os.readlink(link)}")
