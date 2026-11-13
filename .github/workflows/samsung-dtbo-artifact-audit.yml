@@ -141,7 +141,15 @@ jobs:
           for stage in stages:
               replacement = '\tif (ret) {\n\t\tfprintf(stderr, "LIBFDT_STAGE_FAILED=' + stage + ' errno=%d\\n", ret);\n\t\tgoto err;\n\t}'
               chunk = chunk.replace(pattern, replacement, 1)
-          p.write_text(s[:start] + chunk + s[end:])
+          s = s[:start] + chunk + s[end:]
+          local_start = s.index('static int overlay_update_local_node_references(')
+          local_end = s.index('static int overlay_update_local_references(', local_start)
+          local = s[local_start:local_end]
+          debug = '{ fprintf(stderr, "LOCAL_BADOVERLAY_LINE=%d tree=%d fixup=%d\\n", __LINE__, tree_node, fixup_node); return -FDT_ERR_BADOVERLAY; }'
+          if local.count('return -FDT_ERR_BADOVERLAY;') != 4:
+              raise SystemExit('Unexpected pinned libfdt local fixup error count')
+          local = local.replace('return -FDT_ERR_BADOVERLAY;', debug)
+          p.write_text(s[:local_start] + local + s[local_end:])
           PY
           make -C _dtc-debug fdtoverlay -j2
           export LD_LIBRARY_PATH="$PWD/_dtc-debug/libfdt"
