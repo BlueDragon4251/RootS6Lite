@@ -97,3 +97,24 @@ py -3 "$dir\audit_stock_firmware.py" --boot "$dir\boot.img" --recovery "$dir\rec
 ```
 
 Before sharing, the user can review the schema-3 JSON; it contains hashes, generic boot-structure fields, compatible/model/board metadata and selected kernel flags, but not the kernel or ramdisk contents. If the stock payload is gzip, compare its `decompressed_sha256` against the research `Image` SHA256 `12e7a4f340958f269f4760d41c20e2b6311029b92f77f0f63b40c16abc1fbf48` (full Run 43373071951). The research kernel's embedded IKCONFIG plain-text SHA256 is `f13d3cba992e72cf276ffc26b4b2f983ba35d5414f61888cfbdfecdce97e76cf` and corresponds exactly to its generated `.config` artifact. Differences in stock-vs-research kernel binary and/or config are **not necessarily defects** but require investigation and ABI qualification. These checks cannot establish module symbol CRC compatibility or replace an on-device baseline boot test; no research output is flash-approved.
+
+### Actual schema-3 stock kernel results — received 2026-11-13
+
+The uploaded, metadata-only schema-3 report verifies the same original `boot.img` and `recovery.img` whole-file SHA256 values and finds **identical kernel payloads in both images**. The Android v2 header, compressed payload and recovery DTBO table are now substantially characterized:
+
+| Property | Original target stock P613XXS8CYE1 | CI research CWL1/Clang14 baseline |
+| --- | --- | --- |
+| Android boot header | v2, header size 1,660, page 4,096 | Boot image not yet packaged |
+| Boot/recovery kernel payload | gzip, 19,080,331 bytes, SHA256 `1946b2eb0aa710cad781b28a1fddd9464092ecbab45185d31fda1faa2f4d04ef` | Raw uncompressed `Image` produced by CI; gzip packaging not yet stock-equivalent |
+| Decompressed ARM64 Image | **48,832,528 bytes**, SHA256 `14defad3fe7854da3cadc43b2c01e96a48a27a4a0e847043c989c45c66fb8228` | **48,826,384 bytes**, SHA256 `12e7a4f340958f269f4760d41c20e2b6311029b92f77f0f63b40c16abc1fbf48` |
+| Embedded Linux release | `4.14.190-perf-28683246-abP613XXS8CYE1` | `4.14.190-perf` reported from research modules; no proof of stock release suffix equivalence |
+| Embedded decompressed IKCONFIG | **182,359 bytes**, SHA256 `1bb058a8ea9cd72287e2f33fad7745bcc9733c453fbfec7c312352d8cc728208` | **181,998 bytes**, SHA256 `f13d3cba992e72cf276ffc26b4b2f983ba35d5414f61888cfbdfecdce97e76cf` |
+| Selected 14 root/ABI Kconfig fields | `KPROBES=n`, `MODVERSIONS=y`, `MODULE_SIG_FORCE=y`, `KALLSYMS_ALL=y`, `LOCALVERSION=\"-perf\"` etc. | All **14 selected fields match** stock; full config differs |
+| Header DTB region | 442,884 bytes = 442,711-byte Qualcomm base DTB + 173-byte extra FDT-formatted record; SHA256 `60f36c9fca07fb819b34af5f60bc3b2628a74ffd873605a307a7139844d71dc1` | Base DTB alone byte-identical; extra 173-byte record not yet reproduced/identified |
+| Recovery DTBO | Valid Android DTBO table, offset `30273536`, **184,745 bytes** = 64-byte header+entry + 184,681-byte Samsung overlay; table v0, one entry ID 0/rev 0, page 4,096 | Samsung DTBO blob **byte-identical**; no standalone CI table/boot package yet |
+
+**Interpretation:** The target firmware's base DTB and Samsung overlay are a perfect binary match to the source-built corresponding FDTs. The **actual kernel and complete Kconfig are not identical**: the stock decompressed kernel is 6,144 bytes larger and has a different SHA256, while the full stock config differs by 361 bytes in reported length. This is not evidence of a specific breaking ABI difference by itself. The selected root/ABI-relevant switches agree, but the complete configuration differences, exported symbol CRCs, kernel build string provenance, vendor modules and signing certificates remain unexamined. The runtime `4.14.190-perf-28683246-abP613XXS8CYE1` release differs from the research module `vermagic`; never just replace a release suffix and claim compatibility.
+
+**Signing gate:** Both stock and research configs indicate `CONFIG_MODULE_SIG_FORCE=y` and `CONFIG_MODULE_SIG_ALL=y`; the earlier CI research `make modules` outputs lacked a signature trailer in the sampled `.ko`. Do not attempt to insert those unsigned modules. A future research flow must validate module signing and trusted public cert with the exact rebuilt kernel (while keeping private keys private); it must not reuse stock signing assumptions.
+
+**Still blocked:** OEM-equivalent toolchain and genuine stock baseline, kernel/module ABI and signing, exact boot packaging with original ramdisk/DTBO header, safe recovery, and controlled on-device stock-baseline test. No CI experiment is approved for flashing; KernelSU Next Legacy integration and apps follow only after the baseline gates.
