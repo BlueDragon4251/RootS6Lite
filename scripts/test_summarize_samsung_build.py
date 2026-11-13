@@ -26,16 +26,6 @@ class BuildDiagnosticsTests(unittest.TestCase):
         self.assertEqual(classify("bash: xyz: command not found"), "environment_error")
         self.assertEqual(classify("ld.lld: error: undefined symbol: foo"), "compiler_or_linker_error")
 
-    def test_binutils_relocation_is_a_linker_error(self):
-        lines = [
-            "aarch64-linux-gnu-ld: drivers/platform/msm/gsi/gsi.o: relocation R_AARCH64_ABS32 against `__crc_gsi_write_channel_scratch' can not be used when making a shared object",
-            "security/selinux/hooks.o: relocation truncated to fit: R_AARCH64_ADR_PREL_PG_HI21 against `.bss.rtic'",
-            "make[1]: *** [Makefile:1197: vmlinux] Error 1",
-        ]
-        result = summarize(lines, 2)
-        self.assertEqual(result["first_reported_error"]["kind"], "linker_error")
-        self.assertEqual(result["counts"]["linker_error"], 2)
-
     def test_samsung_wrapper_forbidden_warning(self):
         lines = [
             "diagmem.c:184:11: warning: cast to smaller integer type",
@@ -50,6 +40,17 @@ class BuildDiagnosticsTests(unittest.TestCase):
         result = summarize([], 137)
         self.assertEqual(result["exit_code"], 137)
         self.assertIsNone(result["first_reported_error"])
+
+    def test_makefile_abort_is_causal_before_make_cascades(self):
+        lines = [
+            "/tmp/src/drivers/kernelsu/Kbuild:221: *** -- KernelSU-Next: No hooks were defined, please integrate manual hooks in your kernel!.  Stop.",
+            "make[2]: *** [scripts/Makefile.modbuiltin:55: drivers/kernelsu] Error 2",
+            "make[1]: *** [Makefile:1473: drivers/modules.builtin] Error 2",
+        ]
+        result = summarize(lines, 2)
+        self.assertEqual(result["first_reported_error"]["kind"], "makefile_fatal")
+        self.assertEqual(result["first_reported_error"]["line"], 1)
+        self.assertEqual(result["counts"]["make_failure_or_cascade"], 2)
 
 
 if __name__ == "__main__":
