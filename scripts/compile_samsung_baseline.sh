@@ -150,13 +150,19 @@ sha256sum "$OUT/arch/arm64/boot/Image" >> "$EVIDENCE/provenance.txt"
 # Image alone omits the device-tree and module compatibility evidence needed
 # for later baseline work.  Require both output classes and retain manifests
 # of every emitted file rather than treating an Image-only build as complete.
-mapfile -t dtbs < <(find "$OUT/arch/arm64/boot/dts" -type f -name '*.dtb' -print | sort)
-mapfile -t modules < <(find "$OUT" -type f -name '*.ko' -print | sort)
+mapfile -t dtbs < <(find "$OUT/arch/arm64/boot/dts" -type f -name '*.dtb' -printf 'arch/arm64/boot/dts/%P\n' | sort)
+mapfile -t modules < <(cd "$OUT" && find . -type f -name '*.ko' -printf '%P\n' | sort)
 (( ${#dtbs[@]} > 0 ))
 (( ${#modules[@]} > 0 ))
 printf '%s\n' "${dtbs[@]}" > "$EVIDENCE/dtb-files.txt"
 printf '%s\n' "${modules[@]}" > "$EVIDENCE/module-files.txt"
-sha256sum "${dtbs[@]}" > "$EVIDENCE/dtb.sha256"
-sha256sum "${modules[@]}" > "$EVIDENCE/modules.sha256"
+(
+  cd "$OUT"
+  sha256sum "${dtbs[@]}"
+) > "$EVIDENCE/dtb.sha256"
+(
+  cd "$OUT"
+  sha256sum "${modules[@]}"
+) > "$EVIDENCE/modules.sha256"
 printf 'DTB_COUNT=%s\nMODULE_COUNT=%s\n' "${#dtbs[@]}" "${#modules[@]}" | tee -a "$EVIDENCE/status.txt"
 echo "Image, DTBs, and modules compiled, but NEVER FLASH these artifacts: stock ABI/DTB, exact toolchain and physical boot are unverified." | tee -a "$EVIDENCE/status.txt"
