@@ -66,7 +66,7 @@ Read-only parsing of the saved binary FDT structure maps these offsets to:
 
 The standard libfdt child-name lookup for `qcom,dsi-display` can select the first `qcom,dsi-display@0` sibling when applying local fixups. This explains the observed `FDT_ERR_BADOVERLAY` without implying that the Android/Qualcomm bootloader uses identical overlay semantics. All 161 external overlay fixup label names resolved against the compiled base's `__symbols__`; no missing fragment targets were found. **Do not silently change Samsung's FDT source or claim stock compatibility.**
 
-Next: compare the overlay using Android's `libufdt` implementation and with the original `P613XXS8CYE1` boot-chain DTBO. Treat standard `fdtoverlay` as a separate diagnostic; preserve its failure record and mark `FLASH_ALLOWED=NO`.
+Android `libufdt` source-pair result is documented below; the original `P613XXS8CYE1` boot-chain DTBO comparison is still outstanding. Keep standard `fdtoverlay` as a separate failed diagnostic and `FLASH_ALLOWED=NO`.
 ### Android libufdt validation — completed on compiled source pair
 
 [Artifact-only CI Run 43373499084](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43373499084) **PASSED** with the exact saved CWL1 base DTB and Samsung Wi-Fi EUR DTBO. The workflow fetches official AOSP `ufdt_apply_overlay` from `kernel/prebuilts/build-tools` and verifies Git blob SHA-1 `2a243bd8eac5c95145b1885e9b009afdf8d5ac2e` before executing it. Outcome:
@@ -77,3 +77,13 @@ Next: compare the overlay using Android's `libufdt` implementation and with the 
 - Artifact explicitly records `STOCK_DTBO_ABI=UNVERIFIED` and `FLASH_ALLOWED=NO`.
 
 This verifies that an Android overlay implementation can merge the **compiled CWL1 source pair**. It is not verification of the bootloader's actual implementation, DTBO partition selection, kernel ABI or the target `P613XXS8CYE1` firmware. Those remain required before any boot test.
+
+### Fresh complete full-build verification — Run 43373071951
+
+[Full stock-source compiler experiment Run 43373071951](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43373071951) completed **successfully** (job `131713143005`, all steps green). The actual build log contains `BUILD_EXIT_CODE=0`, `DTB_COUNT=1`, `DTBO_COUNT=1`, and `MODULE_COUNT=10`. Downloaded artifact `14013642553` contains an ARM64 `Image` (SHA256 `12e7a4f340958f269f4760d41c20e2b6311029b92f77f0f63b40c16abc1fbf48`), the Samsung overlay and Qualcomm base, and ten modules. All **12** DTB/DTBO/module checks passed using the artifact's own saved `sha256sum -c` manifests.
+
+The latest base `atoll-ab-idp.dtb` SHA256 is `e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816`; Samsung `atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo` SHA256 is `aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12`. These are byte-identical to the DTB+DTBO input pair checked by the AOSP-libufdt CI. Applying AOSP `ufdt_apply_overlay` again to the latest artifact yielded the same non-flashable merged FDT SHA256 `157aa936a2a27191e62145046259d7a8e828640e2881e15f225e2d82e80cbec6`. This **does not establish stock firmware compatibility or bootability**.
+
+The full artifact **continues to record** `DTBO_STANDARD_LIBFDT_SMOKE_TEST=FAILED_EXIT_1`, `ANDROID_LIBUFDT_CHECK=PENDING` (the Android verification is a separate successful workflow), `STOCK_DTBO_MATCH=UNVERIFIED`, `FLASH_ALLOWED=NO` and `MODULE_SIGNATURE_TRAILER=ABSENT_IN_FIRST_MODULE`. The latter concerns an unsigned research `.ko` output, not stock module-signature policy verification. The artifact includes the public, auto-generated X.509 certificate fingerprint and DER; **no private signing key** was uploaded.
+
+**Unresolved repeatability:** The latest Image hash differs from earlier full builds even though the generated config, the base DTB, Samsung DTBO and ten module hashes match. The auto-generated public X.509 certificate was found embedded at offset 40,251,136 in two research Images, and its contents differ per run. Do not attribute all Image binary drift to that certificate without further binary-level analysis. This and the missing exact OEM Qualcomm Clang-10 toolchain remain research issues; do not release a flashable image.
