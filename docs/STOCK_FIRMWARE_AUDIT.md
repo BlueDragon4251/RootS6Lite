@@ -81,3 +81,19 @@ The user supplied a second offline, read-only schema-2 report. It confirms the o
 The boot-image v2 page geometry is self-consistent: `4096`-byte header + padded kernel payload `19083264` + padded ramdisk `729088` = base DTB offset `19816448`. In recovery, the Samsung FDT begins 64 bytes after the page-aligned end of the reported kernel and ramdisk; this is **consistent with** a 32-byte Android DTBO table header plus one 32-byte entry, but without the actual 64 header bytes it is an inference rather than a verified parsed table.
 
 **Not established:** installed partition contents/selection, compressed stock kernel code parity, Qualcomm original compiler equivalence, Module.symvers and vendor module ABI, module signing enforcement, kernel patch hooks, bootability, KernelSU Next or anything related to Snapchat/Play Integrity. A previously observed research module `vermagic` mismatch remains. `FLASH_ALLOWED=NO`.
+
+### Next read-only gate: boot kernel payload, boot header v2 and embedded IKCONFIG
+
+[Commit 3d85dbe](https://github.com/BlueDragon4251/RootS6Lite/commit/3d85dbea4c381a5819c5b8a3516232d8232e46c6) expands the same offline script to `audit_schema=3`. It reads the **compressed kernel payload** of stock boot/recovery without exporting its bytes, reports payload SHA256, compression signature, and (for gzip) safely bounded decompressed kernel size/hash and ARM64 Image magic. It parses the Android v1/v2 `recovery_dtbo_size`/`recovery_dtbo_offset`/`header_size` and v2 `dtb_size`/`dtb_addr`, computing page-aligned kernel, ramdisk, DTBO and DTB regions. If the recovery image includes a valid Android DTBO table at the v2 header's offset, it reports the table entries/hashes. The tool **never uploads raw partitions, exposes kernel command-line text, exports ramdisk bytes or writes to the device**.
+
+[Commit 2105838](https://github.com/BlueDragon4251/RootS6Lite/commit/2105838f34761fedb39c2452c2f73f4ba4bf3166) additionally parses the kernel's `IKCFG_ST` ... `IKCFG_ED` embedded gzipped Kconfig in a bounded manner (when available). It records only the decompressed config SHA256 and a small allowlisted set of ABI/root-significant flags, e.g. `CONFIG_KPROBES`, `CONFIG_MODVERSIONS`, `CONFIG_MODULE_SIG_FORCE` and `CONFIG_LOCALVERSION`; unrelated config contents are not exported. [13 synthetic tests](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43383214166) passed with [test commit 7855193](https://github.com/BlueDragon4251/RootS6Lite/commit/7855193463166b7efea4ad1873b7e5ad0cd435bb).
+
+Run on Windows PowerShell (same already-verified original files, **no local kernel compilation**):
+
+```powershell
+$dir = "$env:USERPROFILE\Downloads\flashen"
+Invoke-WebRequest "https://raw.githubusercontent.com/BlueDragon4251/RootS6Lite/agent/kernel-foundation/scripts/audit_stock_firmware.py" -OutFile "$dir\audit_stock_firmware.py"
+py -3 "$dir\audit_stock_firmware.py" --boot "$dir\boot.img" --recovery "$dir\recovery.img" --output "$dir\RootS6Lite-stock-kernel-audit-v3.json"
+```
+
+Before sharing, the user can review the schema-3 JSON; it contains hashes, generic boot-structure fields, compatible/model/board metadata and selected kernel flags, but not the kernel or ramdisk contents. If the stock payload is gzip, compare its `decompressed_sha256` against the research `Image` SHA256 `12e7a4f340958f269f4760d41c20e2b6311029b92f77f0f63b40c16abc1fbf48` (full Run 43373071951). The research kernel's embedded IKCONFIG plain-text SHA256 is `f13d3cba992e72cf276ffc26b4b2f983ba35d5414f61888cfbdfecdce97e76cf` and corresponds exactly to its generated `.config` artifact. Differences in stock-vs-research kernel binary and/or config are **not necessarily defects** but require investigation and ABI qualification. These checks cannot establish module symbol CRC compatibility or replace an on-device baseline boot test; no research output is flash-approved.
