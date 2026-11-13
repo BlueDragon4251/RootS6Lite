@@ -40,7 +40,7 @@ If the report disagrees, stop and confirm which firmware file was inspected. A s
 
 1. Stock boot header format, embedded FDT selection if present, and kernel payload identification.
 2. Stock DTBO table entries, board revision selectors and model/compatible properties compared with the compiled Wi-Fi EUR overlay.
-3. Kernel module ABI, forced module signing, and symbol CRCs; this script does not yet inspect the entire vendor partition.
+3. Kernel module ABI, forced module signing, and symbol CRCs; this script does not yet inspect the entire vendor partition. One CI-built module reports `vermagic=4.14.190-perf SMP preempt mod_unload modversions aarch64`, while the tablet reports `4.14.190-perf-28683246-abP613XXS8CYE1`. This version-suffix difference blocks any assumption that the CI `.ko` files will load against installed stock modules; merely changing `LOCALVERSION` cannot establish ABI compatibility.
 4. Resolve differing firmware source revisions, DT warnings, toolchain and CI reproducibility before any controlled baseline boot test.
 
 The experimental CI DTBO overlay application test is **not** proof of stock boot-chain compatibility. No output from the research CI is approved for flashing.
