@@ -9,6 +9,8 @@ on:
       - 'scripts/test_audit_stock_firmware.py'
       - 'scripts/export_stock_ikconfig.py'
       - 'scripts/test_export_stock_ikconfig.py'
+      - 'scripts/verify_signed_module_artifact.py'
+      - 'scripts/test_verify_signed_module_artifact.py'
       - 'docs/SAMSUNG_SOURCE.md'
   pull_request:
     paths:
@@ -18,6 +20,8 @@ on:
       - 'scripts/test_audit_stock_firmware.py'
       - 'scripts/export_stock_ikconfig.py'
       - 'scripts/test_export_stock_ikconfig.py'
+      - 'scripts/verify_signed_module_artifact.py'
+      - 'scripts/test_verify_signed_module_artifact.py'
       - 'docs/SAMSUNG_SOURCE.md'
   workflow_dispatch:
 permissions:
@@ -44,3 +48,6 @@ jobs:
 
       - name: Test opt-in offline IKCONFIG exporter
         run: python3 -m unittest discover -s scripts -p 'test_export_stock_ikconfig.py' -v
+
+      - name: Test signed-module PKCS#7 framing
+        run: python3 -m unittest discover -s scripts -p 'test_verify_signed_module_artifact.py' -v

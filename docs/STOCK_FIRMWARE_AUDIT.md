@@ -147,3 +147,10 @@ The new raw research Image remains **48,826,384 bytes** (SHA256 b22e62487910c79d
 [Run 43385818357](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43385818357) separately proved that make modules_install signs all 10 research modules with an ephemeral CI certificate; private key was not uploaded. Archive inspection exposed a duplicate unsigned copy under a modules/build symlink included by the broad upload glob; narrow the artifact glob to kernel subdirectory to keep signed and unsigned module classes separate. This is an artifact-presentation issue, not a signing-stage failure.
 
 **Remaining blocks:** stock/CI ABI and exported-symbol CRC matching, root of module signing trust on target firmware, exact Samsung/Qualcomm compiler, original firmware boot packaging and controlled physical baseline boot. No flash permit.
+
+
+### Independent cryptographic module-signature verification
+
+The research package from successful run 43386729110 was downloaded and all **ten** installed modules in the */kernel/* staging directory were checked independently using OpenSSL CMS detached PKCS#7 signature verification against the **public X.509 certificate generated in that same build**. Result: 10/10 mathematically valid signatures. This is strictly an experimental-build integrity check, **not** Samsung stock firmware's signing trust or loading/boot compatibility.
+
+The repository's scripts/verify_signed_module_artifact.py independently parses Linux's appended 12-byte module-signature header, extracts the detached PKCS#7 and unsigned module payload, and verifies each using OpenSSL. Run it manually on a downloaded CI artifact ZIP. The dedicated four synthetic framing unit tests cover valid, missing, invalid key type and out-of-bounds signatures. The full cryptographic integration was tested against the real 43386729110 artifact.
