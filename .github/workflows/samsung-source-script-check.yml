@@ -5,11 +5,15 @@ on:
     paths:
       - '.github/workflows/samsung-source-*.yml'
       - 'scripts/verify_samsung_source.py'
+      - 'scripts/audit_stock_firmware.py'
+      - 'scripts/test_audit_stock_firmware.py'
       - 'docs/SAMSUNG_SOURCE.md'
   pull_request:
     paths:
       - '.github/workflows/samsung-source-*.yml'
       - 'scripts/verify_samsung_source.py'
+      - 'scripts/audit_stock_firmware.py'
+      - 'scripts/test_audit_stock_firmware.py'
       - 'docs/SAMSUNG_SOURCE.md'
   workflow_dispatch:
 permissions:
@@ -30,3 +34,6 @@ jobs:
           assert len(FILES) == 3
           print('Verifier self-test passed')
           PY
+
+      - name: Test offline stock boot and DTBO auditor
+        run: python3 -m unittest discover -s scripts -p 'test_audit_stock_firmware.py' -v
