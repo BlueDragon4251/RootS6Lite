@@ -64,3 +64,20 @@ The original scanner also finds additional 173-byte FDT-formatted records in boo
 - Samsung Wi-Fi EUR overlay DTBO: `aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12`
 
 If both match, the compiled source-pair device-tree bytes match the respective *embedded* reference FDTs from the submitted stock boot/recovery images; this still does **not** prove installed DTBO partition contents, complete vendor-module ABI equivalence, toolchain parity, or bootability. No flashable output is approved.
+
+### Schema-2 report — exact stock embedded-FDT binary match confirmed
+
+The user supplied a second offline, read-only schema-2 report. It confirms the original whole-file boot/recovery SHA256 references and records these **exact per-FDT hashes**, independently reproduced against downloaded [full CI Run 43373071951](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43373071951) compiled artifacts:
+
+| Source image / offset | FDT size | Reported stock FDT SHA256 | CI reference result |
+| --- | ---: | --- | --- |
+| `boot.img` / `19816448` | 442,711 | `e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816` | **EXACT** base `atoll-ab-idp.dtb` |
+| `recovery.img` / `30273600` | 184,681 | `aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12` | **EXACT** Samsung `atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo` |
+| `recovery.img` / `30461952` | 442,711 | `e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816` | **EXACT** base `atoll-ab-idp.dtb` |
+| `boot.img` / `20259159` and `recovery.img` / `30904663` | 173 each | `f0358d4d97e41ab9be741c3c974518abca4023b684fd47b6ba7a660d422ab06a` | Identical extra FDT-formatted record in both stock images; **unclassified**, no corresponding CI research artifact |
+
+**Confirmed narrow result:** The two compiled CWL1 device-tree binaries are byte-for-byte the same as the respective FDT blobs embedded in the user's verified original CYE1 boot/recovery images. The earlier OSRC version gap **does not cause drift in these two specific FDT artifacts**. The user-provided report itself is metadata only; no original boot/recovery binaries were uploaded to this project. [Commit 51d5eb7](https://github.com/BlueDragon4251/RootS6Lite/commit/51d5eb7a948f5ffdf636f2eddb1aeae20b7f618c) adds a fast, explicit hash-gated GitHub Actions compatibility check.
+
+The boot-image v2 page geometry is self-consistent: `4096`-byte header + padded kernel payload `19083264` + padded ramdisk `729088` = base DTB offset `19816448`. In recovery, the Samsung FDT begins 64 bytes after the page-aligned end of the reported kernel and ramdisk; this is **consistent with** a 32-byte Android DTBO table header plus one 32-byte entry, but without the actual 64 header bytes it is an inference rather than a verified parsed table.
+
+**Not established:** installed partition contents/selection, compressed stock kernel code parity, Qualcomm original compiler equivalence, Module.symvers and vendor module ABI, module signing enforcement, kernel patch hooks, bootability, KernelSU Next or anything related to Snapchat/Play Integrity. A previously observed research module `vermagic` mismatch remains. `FLASH_ALLOWED=NO`.
