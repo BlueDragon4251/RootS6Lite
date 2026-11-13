@@ -163,3 +163,26 @@ The repository's scripts/verify_signed_module_artifact.py independently parses L
 The actual research Module.symvers has **12,559 exported symbols**. **Exactly one** has CRC 0x00000000: the exported Qualcomm **gsi_write_channel_scratch**; the related gsi_write_channel_scratch2_reg and scratch3_reg have nonzero CRCs (0xfe7c1eb0 and 0x1909c11c, respectively). The build logs also report that gsi_write_channel_scratch version generation failed. The Samsung source declares it with a packed-union value parameter. This is now a specifically evidenced symbol-version blocker, **not** a harmless warning; no ABI parity should be claimed until the target stock symbol behavior and any consumers are investigated. Do not rewrite the public kernel function signature merely to silence genksyms before confirming stock compatibility.
 
 The CI Image and modules have still **never booted on the actual SM-P613**. Runtime Samsung vendor modules, original firmware public signing trust and source/toolchain binary equivalence remain unknown. A compiled, fully-configured and signed kernel is still **NOT FLASH APPROVED**.
+
+
+### Pinned AOSP Clang 10 vs APT Clang 14 full-build comparison — 2026-11-13
+
+The official AOSP Android 11 `clang-r370808` (LLVM 10.0.1, prebuilt Git commit `252aba16f513a857bc923172f67b0e55e23de35f`) successfully passed a compiled ARM64 smoke test in [run 43395646009](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43395646009). A previous failed diagnostic smoke test proved that three Clang14-only warning-disable flags are **unknown** to Clang10; the AOSP profile excludes those options rather than suppressing new diagnostics. This compiler is **not** Samsung's proprietary Qualcomm Clang 10.
+
+The actual full research builds at [AOSP10 run 43395956545](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43395956545) and [APT14 run 43395956197](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43395956197) both **SUCCEEDED** (`BUILD_EXIT_CODE=0`, `MODULES_INSTALL_EXIT_CODE=0`), each with one base DTB, one board DTBO and ten signed research modules. The artifacts were downloaded and inspected, not inferred from workflow-green status:
+
+| Evidence | Target Samsung CYE1 | AOSP Clang 10 | APT Clang 14 |
+| --- | --- | --- | --- |
+| Decompressed Image bytes | 48,832,528 | 48,828,432 | 48,826,384 |
+| Image SHA256 | `14defad3fe7854da3cadc43b2c01e96a48a27a4a0e847043c989c45c66fb8228` | `b73487f6fc460be4e762ded7f1b0373c760c24e67c4880770fda7aa302fc6afd` | `36f90660e5667b6bc2951465e9819bb698606e2751f75426b18bb78d9362088b` |
+| Reconciled .config SHA256 | Original contains one additional disabled comment | `3345e9d95ccc30da221c345f3f25fb974e42d890c2f630bb52fe8be2ef9716df` | Identical to AOSP10 |
+| Qualcomm base DTB SHA256 | `e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816` | Exact match | Exact match |
+| Samsung Wi-Fi EUR DTBO SHA256 | `aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12` | Exact match | Exact match |
+| `Module.symvers` records | Not available from stock | 12,559 | 12,559; byte-identical to AOSP10 |
+| Zero-CRC exports | Stock unknown | `gsi_write_channel_scratch` | Same single export |
+| Signed modules | OEM trust unknown | Ten; independently verified 10/10 PKCS#7 against CI certificate | Ten; independently verified 10/10 |
+| `fdtoverlay` standard libfdt smoke | Actual bootloader behavior unverified | FAILED exit 1 | FAILED exit 1 |
+
+AOSP Clang10's Image is 2,048 bytes closer in size to stock, **which is not evidence of better ABI or boot compatibility**. Both Image hashes differ from stock. The two research `Module.symvers` are byte-identical (including the unresolved zero CRC), but **stock symbol CRCs remain unavailable**. Binary module signer validity establishes only the validity under that specific build's ephemeral cert, not acceptance by stock Android or bootability.
+
+[Commit a8ecb9d](https://github.com/BlueDragon4251/RootS6Lite/commit/a8ecb9d6a86942a52c936f53dcbb83734483adbb) adds automated build checks against the authenticated stock base DTB/DTBO SHA256 values and explicitly records the raw Image SHA/size equality result as `IMAGE_BINARY_EQUAL_STOCK`. A successful checksum comparison is **not** a waiver for the outstanding standard-libfdt merge diagnostic, original OEM toolchain, stock ABI, or actual device boot. The follow-up CI outcome must be read separately.
