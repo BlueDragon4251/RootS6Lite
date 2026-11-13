@@ -101,6 +101,7 @@ args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TR
   echo "COMPILER_EXPERIMENT=clang-14 frontend (NOT OEM Qualcomm clang-10) + verified AOSP Android GCC 4.9 binutils linker"
   echo "LINKER_SELECTION=${CROSS_COMPILE}ld (AOSP Android GCC 4.9 commit 606f80986096476912e04e5c2913685a8f2c3b65; ld.bfd SHA256 2a663de4ce3d702fe3f2a0de48cac366be676f850c2f5732d9cc2e4acb9335e2)"
   echo "COMPILER_FLAGS=-Wno-unused-but-set-variable -Wno-align-mismatch -Wno-void-pointer-to-int-cast -Wno-pragma-pack -gdwarf-4 (diagnostic compatibility only; warnings are not fixes)"
+  echo "STOCK_CONFIG_PROFILE=CYE1_FIVE_PROCA_S_OS (generated from CWL1 + Kconfig olddefconfig)"
   echo "STOCK_COMPATIBILITY=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
 } > "$EVIDENCE/provenance.txt"
@@ -121,10 +122,33 @@ args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TR
 
 echo "=== Generate Samsung config ===" | tee "$EVIDENCE/status.txt"
 make "${args[@]}" gta4xlvewifi_eur_open_defconfig 2>&1 | tee "$EVIDENCE/defconfig.log"
+cp "$OUT/.config" "$EVIDENCE/unmodified-osrc-defconfig.config"
+
+# CYE1 target stock's authenticated IKCONFIG differs from CWL1 OSRC's default:
+# stock enables FIVE + PROCA + PROCA_S_OS; the latter makes TZIC unavailable.
+# Reproduce these choices through Kconfig dependency resolution, not by editing
+# security sources or forcing arbitrary compiler preprocessor defines.
+test -x "$SRC/scripts/config"
+"$SRC/scripts/config" --file "$OUT/.config" --enable FIVE --enable PROCA --enable PROCA_S_OS
+make "${args[@]}" olddefconfig 2>&1 | tee "$EVIDENCE/stock-config-reconciliation.log"
+for required in \
+  'CONFIG_FIVE=y' \
+  'CONFIG_FIVE_CERT_USER="x509_five_user.der"' \
+  'CONFIG_FIVE_DEFAULT_HASH_SHA1=y' \
+  'CONFIG_FIVE_TRUSTED_KEYRING=y' \
+  'CONFIG_PROCA=y' \
+  'CONFIG_PROCA_S_OS=y'; do
+  grep -Fqx "$required" "$OUT/.config" || { echo "::error::CYE1 stock Kconfig requirement missing: $required"; exit 1; }
+done
+if grep -Eq '^CONFIG_TZIC(=|_)' "$OUT/.config"; then
+  echo "::error::TZIC must be disabled when stock PROCA_S_OS=y"
+  exit 1
+fi
 cp "$OUT/.config" "$EVIDENCE/stock-generated.config"
 sha256sum "$OUT/.config" > "$EVIDENCE/config.sha256"
 grep -F 'CONFIG_KALLSYMS=y' "$OUT/.config"
 grep -F '# CONFIG_KPROBES is not set' "$OUT/.config"
+echo "STOCK_SECURITY_PROFILE=FIVE_y_PROCA_y_PROCA_S_OS_y_TZIC_n" | tee -a "$EVIDENCE/status.txt"
 
 echo "=== Build Samsung Image, DTBs, and modules (compiler investigation) ===" | tee -a "$EVIDENCE/status.txt"
 set +e

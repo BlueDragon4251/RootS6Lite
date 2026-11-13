@@ -118,3 +118,19 @@ The uploaded, metadata-only schema-3 report verifies the same original `boot.img
 **Signing gate:** Both stock and research configs indicate `CONFIG_MODULE_SIG_FORCE=y` and `CONFIG_MODULE_SIG_ALL=y`; the earlier CI research `make modules` outputs lacked a signature trailer in the sampled `.ko`. Do not attempt to insert those unsigned modules. A future research flow must validate module signing and trusted public cert with the exact rebuilt kernel (while keeping private keys private); it must not reuse stock signing assumptions.
 
 **Still blocked:** OEM-equivalent toolchain and genuine stock baseline, kernel/module ABI and signing, exact boot packaging with original ramdisk/DTBO header, safe recovery, and controlled on-device stock-baseline test. No CI experiment is approved for flashing; KernelSU Next Legacy integration and apps follow only after the baseline gates.
+
+
+### Full stock configuration comparison (original CYE1 embedded IKCONFIG, received 2026-11-13)
+
+The user supplied the complete text kernel configuration extracted from the original, whole-file-hash-verified P613XXS8CYE1 stock boot image. The extracted SHA256 is **exactly** the previously audited embedded IKCONFIG SHA256, 1bb058a8ea9cd72287e2f33fad7745bcc9733c453fbfec7c312352d8cc728208. A complete unified diff against the successful CWL1 research build's generated config (SHA256 f13d3cba992e72cf276ffc26b4b2f983ba35d5414f61888cfbdfecdce97e76cf) reveals the following:
+
+- **Stock FIVE enabled:** CONFIG_FIVE=y, plus its Kconfig-selected SHA-1 hash and trusted keyring settings, with default user certificate x509_five_user.der. Research had FIVE disabled.
+- **Stock PROCA enabled:** CONFIG_PROCA=y, CONFIG_PROCA_S_OS=y. Research omitted them. Samsung OSRC contains the corresponding Kconfig/implementation and security/samsung/five/x509_five_user.der certificate file.
+- **Stock TZIC disabled by dependency:** the research default CONFIG_TZIC=y, CONFIG_TZIC_USE_QSEECOM=y conflicts with PROCA_S_OS=y; Samsung's drivers/security/samsung/tzic/Kconfig declares TZIC depends on !PROCA_S_OS. The stock IKCONFIG omits both.
+- Stock also contains a disabled CONFIG_DISABLE_LOCKSCREEN_USB_RESTRICTION line absent from research; this is **not** evidence that the restriction is enabled, but the existence of the setting deserves source-version follow-up.
+
+All other lines of the two complete configs matched in the initial text diff, not merely the earlier 14 allowlisted flags. The stock vs research Image bytes still differ, and a matching Kconfig alone would **not** prove ABI or boot equivalence.
+
+The research compile workflow now explicitly reconciles the CYE1 security configuration: start from official CWL1 Samsung defconfig, preserve its unmodified config in CI evidence, enable FIVE, PROCA and PROCA_S_OS via the Linux kernel scripts/config, run make olddefconfig to resolve Kconfig dependencies, and assert final settings including TZIC disabled. This is a **research build adjustment**; no vendor security safeguards are deliberately removed. New full CI must prove whether the older source successfully compiles with these stock-selected options.
+
+Do not publish the complete original user-extracted config without user review; this documentation records only the named differing flags and verified hashes. No flash permission.
