@@ -7,6 +7,9 @@ on:
       - '.github/workflows/samsung-kernelsu-next-legacy-compile.yml'
       - 'scripts/compile_samsung_baseline.sh'
       - 'scripts/integrate_kernelsu_next_research.py'
+      - 'scripts/verify_oem_cye1_abi.py'
+      - 'scripts/test_verify_oem_cye1_abi.py'
+      - 'docs/CYE1_STOCK_EXPORT_ABI.json'
   workflow_dispatch:
 
 permissions:
@@ -43,6 +46,9 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_research_symbols.py' -v
           python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_preinit_elf.py' -v
+
+      - name: Self-test authenticated OEM CYE1 ABI verifier
+        run: python3 -m unittest discover -s scripts -p 'test_verify_oem_cye1_abi.py' -v
 
       - name: Download & cryptographically verify real Samsung OSRC archive
         run: |
@@ -142,6 +148,20 @@ jobs:
             echo 'OEM_MODULE_SIGNATURE_TRUST=UNVERIFIED'
             echo 'FLASH_ALLOWED=NO'
           } | tee _evidence/ksu-stock-control-crc-parity.txt
+
+      - name: Audit real CYE1 OEM export mismatch against compiled KernelSU research kernel
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_oem_cye1_abi.py \
+            --manifest docs/CYE1_STOCK_EXPORT_ABI.json \
+            --symvers _out/Module.symvers \
+            --report _evidence/oem-cye1-export-crc-deltas.json
+          # This is a diagnostic gate, not a boot authorization. The known
+          # missing exports and changed OEM CRCs remain explicit blockers.
+          grep -F '"oem_cye1_export_crc_parity": "NO"' _evidence/oem-cye1-export-crc-deltas.json
+          grep -F '"flash_allowed": false' _evidence/oem-cye1-export-crc-deltas.json
+          echo 'OEM_CYE1_EXPORT_CRC_PARITY=NO'
+          echo 'FLASH_ALLOWED=NO'
 
       - name: Publish logs, configuration, and raw kernel if built
         if: always()

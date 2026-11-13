@@ -180,6 +180,35 @@ Actual research artifact ID `14032974405`, ZIP SHA256 `f3e5713770992c4c35e77ce89
 **Interpretation:** This closes research-CI reproducibility, signed-module package integrity and the earlier 8,271-export-CRC regression against the AOSP10 *research stock* control. It does **not** close original Samsung CYE1 CRC/ABI parity or signature trust; the research modules report `4.14.190-perf` rather than the OEM kernel release `4.14.190-perf-28683246-abP613XXS8CYE1`. Research Image differs from stock, true Qualcomm `llvm-arm-toolchain-ship/10.0` is unavailable as a pinned verified binary, no physical baseline boot was performed, and KSU manager/root/SELinux runtime remain untested. **Keep the Draft PR open, do not package for Odin or flash; `FLASH_ALLOWED=NO`.**
 
 
+### Authenticated CYE1 OEM-export mismatch CI gate (2026-11-13)
+
+The independent [CYE1 OEM manifest](CYE1_STOCK_EXPORT_ABI.json) is now checked by
+[`verify_oem_cye1_abi.py`](../scripts/verify_oem_cye1_abi.py) against the
+**actual completed KernelSU Next Legacy research artifact**, rather than just
+the AOSP Clang10 research-control hash. The verifier checks the full reference
+`Module.symvers` SHA256, all named OEM delta CRCs, missing export names,
+normal/GPL export classes and counts, and writes machine-readable evidence in
+`_evidence/oem-cye1-export-crc-deltas.json`. Its eight synthetic unit tests and
+the other 47 repository tests pass locally.
+
+The verified artifact from [run 43417308976](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/43417308976)
+has **12,509 research built-in exports** versus **12,530 original CYE1 OEM
+built-in exports**, including **25 known shared-name CRC mismatches** and
+**21 OEM-only missing exports**. These are genuine binary-compatibility gaps,
+even though the KSU and unmodified research-control `Module.symvers` files
+are byte-identical. Do **not** forge CRCs or suppress Samsung's security
+features to make the numbers appear to match.
+
+This additional workflow step is deliberately a **diagnostic regression gate**:
+it fails if the pinned research reference or known OEM delta evidence changes
+unexpectedly, and it explicitly reports `OEM_CYE1_EXPORT_CRC_PARITY=NO` and
+`FLASH_ALLOWED=NO`. A green GitHub Actions run **never** means the image is
+bootable or approved for flashing. The remaining path to a trustworthy image
+requires authentic source/config for the **exact P613XXS8CYE1 firmware**, an
+appropriately validated OEM-compatible build toolchain and module verification,
+then a supervised physical baseline boot before testing KernelSU itself.
+
+
 ### First direct authenticated OEM CYE1 export-CRC audit (original boot.img received)
 
 The user provided the previously whole-file-hash-verified, **unmodified** CYE1 `boot.img` (SHA256 `06888f51722264ef33f2299e6ccaefab9e6e0c7a96d51c5c8a74cfeecd265655`). Independently extracted only its 48,832,528-byte ARM64 kernel Image (SHA256 `14defad3fe7854da3cadc43b2c01e96a48a27a4a0e847043c989c45c66fb8228`). **The actual binary and ramdisk are not checked into GitHub.**
