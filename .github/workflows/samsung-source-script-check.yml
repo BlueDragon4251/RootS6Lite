@@ -11,6 +11,10 @@ on:
       - 'scripts/test_export_stock_ikconfig.py'
       - 'scripts/verify_signed_module_artifact.py'
       - 'scripts/test_verify_signed_module_artifact.py'
+      - 'scripts/extract_verified_stock_kernel.py'
+      - 'scripts/test_extract_verified_stock_kernel.py'
+      - 'scripts/compare_stock_export_abi.py'
+      - 'scripts/test_compare_stock_export_abi.py'
       - 'docs/SAMSUNG_SOURCE.md'
   pull_request:
     paths:
@@ -22,6 +26,10 @@ on:
       - 'scripts/test_export_stock_ikconfig.py'
       - 'scripts/verify_signed_module_artifact.py'
       - 'scripts/test_verify_signed_module_artifact.py'
+      - 'scripts/extract_verified_stock_kernel.py'
+      - 'scripts/test_extract_verified_stock_kernel.py'
+      - 'scripts/compare_stock_export_abi.py'
+      - 'scripts/test_compare_stock_export_abi.py'
       - 'docs/SAMSUNG_SOURCE.md'
   workflow_dispatch:
 permissions:
@@ -51,3 +59,8 @@ jobs:
 
       - name: Test signed-module PKCS#7 framing
         run: python3 -m unittest discover -s scripts -p 'test_verify_signed_module_artifact.py' -v
+
+      - name: Test verified OEM kernel-only extraction and ABI CRC reconstruction
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_extract_verified_stock_kernel.py' -v
+          python3 -m unittest discover -s scripts -p 'test_compare_stock_export_abi.py' -v
