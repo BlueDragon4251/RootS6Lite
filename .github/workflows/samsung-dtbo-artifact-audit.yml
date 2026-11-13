@@ -116,6 +116,46 @@ jobs:
           fdtget -t s "$merged" / compatible | tee _audit/merged-compatible.txt
           echo 'Source-pair libfdt merge succeeded; stock DTBO/ABI still UNVERIFIED.'
 
+      - name: Pin debug libfdt and identify failing overlay stage
+        if: failure()
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v1.6.1 https://github.com/dgibson/dtc.git _dtc-debug
+          git -C _dtc-debug rev-parse HEAD | tee _audit/dtc-debug-revision.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('_dtc-debug/libfdt/fdt_overlay.c')
+          s = p.read_text()
+          s = '#include <stdio.h>\n' + s
+          start = s.index('int fdt_overlay_apply(')
+          end = s.index('\n}', start)
+          chunk = s[start:end]
+          pattern = '\tif (ret)\n\t\tgoto err;'
+          stages = [
+              'fdt_find_max_phandle', 'overlay_adjust_local_phandles',
+              'overlay_update_local_references', 'overlay_fixup_phandles',
+              'overlay_prevent_phandle_overwrite', 'overlay_merge',
+              'overlay_symbol_update'
+          ]
+          if chunk.count(pattern) != len(stages):
+              raise SystemExit(f'Unexpected pinned libfdt stage count: {chunk.count(pattern)}')
+          for stage in stages:
+              replacement = '\tif (ret) {\n\t\tfprintf(stderr, "LIBFDT_STAGE_FAILED=' + stage + ' errno=%d\\n", ret);\n\t\tgoto err;\n\t}'
+              chunk = chunk.replace(pattern, replacement, 1)
+          p.write_text(s[:start] + chunk + s[end:])
+          PY
+          make -C _dtc-debug fdtoverlay -j2
+          set +e
+          _dtc-debug/fdtoverlay -i \
+            _artifact/_out/arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb \
+            -o _audit/NONFLASHABLE-debug-merged.dtb \
+            _artifact/_out/arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo \
+            > _audit/libfdt-stage-debug.log 2>&1
+          code=$?
+          set -e
+          echo "LIBFDT_PINNED_DEBUG_EXIT_CODE=$code"
+          sed -n '1,90p' _audit/libfdt-stage-debug.log
+
       - name: Upload diagnostic evidence only
         if: always()
         uses: actions/upload-artifact@v4
