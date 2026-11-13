@@ -144,6 +144,8 @@ jobs:
           p.write_text(s[:start] + chunk + s[end:])
           PY
           make -C _dtc-debug fdtoverlay -j2
+          export LD_LIBRARY_PATH="$PWD/_dtc-debug/libfdt"
+          ldd _dtc-debug/fdtoverlay | tee _audit/ldd-debug-fdtoverlay.txt
           set +e
           _dtc-debug/fdtoverlay -i \
             _artifact/_out/arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb \
