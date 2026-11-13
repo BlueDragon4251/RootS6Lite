@@ -216,17 +216,32 @@ base_compat="$(fdtget -t s "$OUT/$BASE_DTB" / compatible)"
 # A libfdt smoke test that applies the Samsung Wi-Fi EUR overlay to its
 # compiled Qualcomm base. It is NOT proof of the stock firmware DTBO/ABI.
 MERGED_DTB="$EVIDENCE/NONFLASHABLE-overlay-application-test.dtb"
+set +e
 fdtoverlay -i "$OUT/$BASE_DTB" -o "$MERGED_DTB" "$OUT/$DEVICE_DTBO" > "$EVIDENCE/dtbo-overlay-apply.log" 2>&1
-test -s "$MERGED_DTB"
-merged_compat="$(fdtget -t s "$MERGED_DTB" / compatible)"
-[[ "$merged_compat" == *"qcom,atoll-ab-idp"* ]]
-sha256sum "$MERGED_DTB" > "$EVIDENCE/overlay-application.sha256"
+overlay_code=$?
+set -e
+if (( overlay_code == 0 )) && [[ -s "$MERGED_DTB" ]]; then
+  merged_compat="$(fdtget -t s "$MERGED_DTB" / compatible)"
+  [[ "$merged_compat" == *"qcom,atoll-ab-idp"* ]]
+  sha256sum "$MERGED_DTB" > "$EVIDENCE/overlay-application.sha256"
+  echo "OVERLAY_APPLY=SUCCESS_STANDARD_LIBFDT_SOURCE_PAIR_ONLY" > "$EVIDENCE/overlay-application-metadata.txt"
+  echo "MERGED_COMPATIBLE=$merged_compat" >> "$EVIDENCE/overlay-application-metadata.txt"
+else
+  # Samsung's overlay includes qcom,dsi-display as well as @0...@5
+  # siblings; libfdt 1.6.1 resolves an unqualified local fixup against
+  # the @0 sibling. See docs/DEVICE_TREE_AUDIT.md and separate red CI gate.
+  # This is NOT a reason to modify official Samsung DTS or to greenlight
+  # the bootloader. The actual Image/DTB/DTBO/module compilation passed.
+  echo "OVERLAY_APPLY=FAILED_STANDARD_LIBFDT_EXIT_$overlay_code" > "$EVIDENCE/overlay-application-metadata.txt"
+  echo "LIBFDT_DIAGNOSTIC=DSI_UNQUALIFIED_NAME_AMBIGUITY_INVESTIGATED" >> "$EVIDENCE/overlay-application-metadata.txt"
+  echo "DTBO_STANDARD_LIBFDT_SMOKE_TEST=FAILED_EXIT_$overlay_code" >> "$EVIDENCE/status.txt"
+  echo "::warning::Compiled Samsung DTBO failed the standard libfdt merge smoke test (exit $overlay_code); separate compatibility gate remains BLOCKED."
+fi
 {
-  echo "OVERLAY_APPLY=SUCCESS (libfdt; compiled source pair only)"
-  echo "MERGED_COMPATIBLE=$merged_compat"
+  echo "ANDROID_LIBUFDT_CHECK=PENDING"
   echo "STOCK_DTBO_MATCH=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
-} > "$EVIDENCE/overlay-application-metadata.txt"
+} >> "$EVIDENCE/overlay-application-metadata.txt"
 
 # make modules outputs may be unsigned until modules_install, although
 # the stock config requires signatures. Record the trailer status.
