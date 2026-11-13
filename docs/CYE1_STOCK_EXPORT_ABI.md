@@ -80,17 +80,60 @@ The research `vermagic` uses `4.14.190-perf` rather than the original
 `4.14.190-perf-28683246-abP613XXS8CYE1`; merely copying a release suffix
 would not fix ABI or signing differences.
 
+## Original CYE1 firmware module inventory (2026-11-13)
+
+The device owner extracted the **authentic matching P613XXS8CYE1 AP** read-only
+on Windows. The AP contains `boot.img.lz4`, `recovery.img.lz4`,
+`dtbo.img.lz4`, `super.img.lz4` and other firmware components. The
+`super.img.lz4` payload decompressed to Android sparse format (magic
+`3aff26ed`) and `simg2img` produced a readable 8.28 GiB raw super image.
+`lpdumps` verified four non-A/B named logical partitions in metadata 10.0:
+`system`, `vendor`, `product`, `odm`. `lpunpack` successfully
+extracted all four; 7-Zip identified readable **Ext** filesystems. Full
+7-Zip inventory searches matching `modules|modprobe|\\.ko` found **zero
+`.ko` files across all four partitions**, with only a 7-byte
+`bin/modprobe` entry in `vendor` and `system/bin/modprobe` in `system`.
+This is owner-provided command/output evidence, not CI access to the firmware.
+The full AP/partition images are **not uploaded or committed**.
+
+Separately, the original `boot.img` already available to the researcher was
+verified **again** against whole-file SHA256
+`06888f51722264ef33f2299e6ccaefab9e6e0c7a96d51c5c8a74cfeecd265655`.
+Its 725,007-byte gzip ramdisk decompresses to a 1,565,952-byte `newc` CPIO
+archive (SHA256 `a907080466f4ad5af5d0eb572dea75df346a1c61d474639df2eda42b8178fb58`).
+The 9 real entries are `debug_ramdisk`, `dev`, `dpolicy`,
+`fstab.default`, `init`, `mnt`, `proc`, `sys`, `verity_key`
+(plus the CPIO trailer). **No `.ko`, `modules.load`, or `.rc`
+entries** were present in that boot ramdisk. No original firmware binary
+was modified by these audits.
+
+**Interpretation:** No separately shipped loadable kernel modules were found
+in the inspected normal-boot AP partitions or boot ramdisk. Thus the ten
+`.ko` files emitted by the experimental research build are **not evidence
+that stock CYE1 loads them**. Conversely, this filesystem-only evidence
+cannot prove all kernel functionality is built-in, that no other boot stage
+loads a module, or that the research kernel would boot. The prior planned
+"OEM vendor module import-CRC gate" is **not applicable to any identified
+shipping `.ko`** on these inspected images. The **25 actual kernel export
+CRC differences and 21 additional CYE1 exports remain verified source/ABI
+mismatches**; they must not be dismissed merely because no `.ko` was found.
+
 ## Next gates
 
-1. Compare all original CYE1 vendor/system `.ko` import CRCs with the recovered
-   OEM export mapping, and determine whether those 25 changed or 21 new symbols
-   are consumed by modules necessary to boot. Do **not** claim compatibility
-   if a module's signature chain or exact module contents are unknown.
-2. Investigate the Samsung 2025 USB-restriction and battery interface changes
-   and locate an authentic matching source package if Samsung provides one.
-3. Validate OEM compiler, kernel build string, module signing and Android
-   boot-chain packaging before any controlled unchanged-baseline boot attempt.
-4. Only after stock-baseline boot succeeds, test KSU Next Legacy/root/SELinux
-   on the actual, currently unavailable and unrooted tablet.
+1. **Prioritize a matching 2025 Samsung CYE1 source release** and investigate
+   security-sensitive USB-restriction, cable/OTG and battery code differences.
+   Community kernel forks may be research references, not substitutes for
+   independently authenticated firmware-matched OEM sources. The 25 changed
+   CRCs and 21 added exports remain unresolved; do not spoof CRC values.
+2. Determine whether the kernel's compiled-in drivers and core runtime are
+   actually compatible with CYE1 even without shipping `.ko` files; compare
+   firmware-matched boot configuration, DTB/DTBO, required subsystems, compiler
+   provenance, security interfaces and boot-chain packaging. A green compile
+   and lack of external modules are **not a boot test**.
+3. Before any controlled unchanged-baseline device test, validate OEM compiler,
+   kernel build string, signing and recovery/rollback. Do not create or release
+   any experimental flash target prematurely.
+4. Only after a baseline device boot succeeds, test KSU Next Legacy, root and
+   SELinux on the actual, currently unavailable and unrooted tablet.
 
 **No modified boot image is generated, uploaded, approved or flashed.**
