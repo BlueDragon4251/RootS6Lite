@@ -171,6 +171,46 @@ def parse_boot(data: bytes) -> dict:
             "kernel_size": kernel_size, "ramdisk_size": ramdisk_size}
 
 
+def embedded_ikconfig_metadata(image: bytes) -> dict:
+    """Inspect only ABI-related Kconfig fields; never export the full config."""
+    begin = image.find(b"IKCFG_ST")
+    if begin < 0:
+        return {"status": "not-found"}
+    begin += len(b"IKCFG_ST")
+    end = image.find(b"IKCFG_ED", begin)
+    if end < 0 or end - begin > 4 * 1024 * 1024:
+        return {"status": "invalid-ikconfig-boundaries"}
+    try:
+        dec = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        plain = dec.decompress(image[begin:end], 4 * 1024 * 1024 + 1)
+        if not dec.eof or len(plain) > 4 * 1024 * 1024:
+            return {"status": "invalid-or-oversized-ikconfig"}
+        plain += dec.flush()
+        if len(plain) > 4 * 1024 * 1024:
+            return {"status": "oversized-ikconfig"}
+    except zlib.error:
+        return {"status": "invalid-gzip-ikconfig"}
+    wanted = {
+        "CONFIG_LOCALVERSION", "CONFIG_LOCALVERSION_AUTO", "CONFIG_MODVERSIONS",
+        "CONFIG_MODULE_SIG", "CONFIG_MODULE_SIG_FORCE", "CONFIG_MODULE_SIG_ALL",
+        "CONFIG_MODULE_SIG_SHA512", "CONFIG_KPROBES", "CONFIG_KALLSYMS",
+        "CONFIG_KALLSYMS_ALL", "CONFIG_IKCONFIG", "CONFIG_IKCONFIG_PROC",
+        "CONFIG_BUILD_ARM64_DT_OVERLAY", "CONFIG_MODULE_SIG_KEY",
+    }
+    selected = {}
+    for row in plain.decode("utf-8", "replace").splitlines():
+        if row.startswith("CONFIG_") and "=" in row:
+            name, value = row.split("=", 1)
+            if name in wanted:
+                selected[name] = value
+        elif row.startswith("# CONFIG_") and row.endswith(" is not set"):
+            name = row[2:].split(" ", 1)[0]
+            if name in wanted:
+                selected[name] = "n"
+    return {"status": "found", "size_bytes": len(plain),
+            "sha256": hashlib.sha256(plain).hexdigest(), "selected": selected}
+
+
 def boot_payload_metadata(data: bytes, header: dict) -> dict:
     """Hash the stock kernel segment; safely inspect gzip without exposing bytes."""
     if header.get("format") != "android-boot" or header.get("header_version", 5) > 2:
@@ -208,6 +248,7 @@ def boot_payload_metadata(data: bytes, header: dict) -> dict:
                     result["gzip_trailing_bytes"] = len(dec.unused_data)
                     result["decompressed_size_bytes"] = len(raw)
                     result["decompressed_sha256"] = hashlib.sha256(raw).hexdigest()
+                    result["embedded_ikconfig"] = embedded_ikconfig_metadata(raw)
                     result["arm64_image_magic"] = (
                         len(raw) >= 60 and struct.unpack_from("<I", raw, 56)[0] == 0x644D5241
                     )
