@@ -108,65 +108,17 @@ jobs:
             fi
           done < <(fdtget -l "$overlay" /)
           if (( code != 0 )); then
-            echo 'Libfdt overlay application failed; no flash compatibility is claimed.'
-            exit "$code"
+            echo "::warning::Standard libfdt rejects Samsung's DSI sibling-name ambiguity (FDT_ERR_BADOVERLAY); see docs/DEVICE_TREE_AUDIT.md."
+            echo 'STANDARD_LIBFDT=REJECTED_KNOWN_NAME_COLLISION' >> _audit/status.txt
+          else
+            test -s "$merged"
+            sha256sum "$merged" | tee _audit/merged-preview.sha256
+            fdtget -t s "$merged" / compatible | tee _audit/merged-compatible.txt
+            echo 'STANDARD_LIBFDT=SUCCESS_SOURCE_PAIR_ONLY' >> _audit/status.txt
           fi
-          test -s "$merged"
-          sha256sum "$merged" | tee _audit/merged-preview.sha256
-          fdtget -t s "$merged" / compatible | tee _audit/merged-compatible.txt
-          echo 'Source-pair libfdt merge succeeded; stock DTBO/ABI still UNVERIFIED.'
+          echo 'This legacy libfdt check does not decide Android bootloader compatibility.'
 
-      - name: Pin debug libfdt and identify failing overlay stage
-        if: failure()
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch v1.6.1 https://github.com/dgibson/dtc.git _dtc-debug
-          git -C _dtc-debug rev-parse HEAD | tee _audit/dtc-debug-revision.txt
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('_dtc-debug/libfdt/fdt_overlay.c')
-          s = p.read_text()
-          s = '#include <stdio.h>\n' + s
-          start = s.index('int fdt_overlay_apply(')
-          end = s.index('\n}', start)
-          chunk = s[start:end]
-          pattern = '\tif (ret)\n\t\tgoto err;'
-          stages = [
-              'fdt_find_max_phandle', 'overlay_adjust_local_phandles',
-              'overlay_update_local_references', 'overlay_fixup_phandles',
-              'overlay_merge', 'overlay_symbol_update'
-          ]
-          if chunk.count(pattern) != len(stages):
-              raise SystemExit(f'Unexpected pinned libfdt stage count: {chunk.count(pattern)}')
-          for stage in stages:
-              replacement = '\tif (ret) {\n\t\tfprintf(stderr, "LIBFDT_STAGE_FAILED=' + stage + ' errno=%d\\n", ret);\n\t\tgoto err;\n\t}'
-              chunk = chunk.replace(pattern, replacement, 1)
-          s = s[:start] + chunk + s[end:]
-          local_start = s.index('static int overlay_update_local_node_references(')
-          local_end = s.index('static int overlay_update_local_references(', local_start)
-          local = s[local_start:local_end]
-          debug = '{ fprintf(stderr, "LOCAL_BADOVERLAY_LINE=%d tree=%d fixup=%d\\n", __LINE__, tree_node, fixup_node); return -FDT_ERR_BADOVERLAY; }'
-          if local.count('return -FDT_ERR_BADOVERLAY;') != 4:
-              raise SystemExit('Unexpected pinned libfdt local fixup error count')
-          local = local.replace('return -FDT_ERR_BADOVERLAY;', debug)
-          p.write_text(s[:local_start] + local + s[local_end:])
-          PY
-          make -C _dtc-debug fdtoverlay -j2
-          export LD_LIBRARY_PATH="$PWD/_dtc-debug/libfdt"
-          ldd _dtc-debug/fdtoverlay | tee _audit/ldd-debug-fdtoverlay.txt
-          set +e
-          _dtc-debug/fdtoverlay -i \
-            _artifact/_out/arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb \
-            -o _audit/NONFLASHABLE-debug-merged.dtb \
-            _artifact/_out/arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo \
-            > _audit/libfdt-stage-debug.log 2>&1
-          code=$?
-          set -e
-          echo "LIBFDT_PINNED_DEBUG_EXIT_CODE=$code"
-          sed -n '1,90p' _audit/libfdt-stage-debug.log
-
-      - name: Compare official AOSP libufdt overlay application semantics
-        if: failure()
+      - name: Verify source-pair overlay with hash-pinned AOSP libufdt
         run: |
           set -euo pipefail
           readonly PREBUILT_URL='https://android.googlesource.com/kernel/prebuilts/build-tools/+/refs/heads/main/linux-x86/bin/ufdt_apply_overlay?format=TEXT'
@@ -184,13 +136,17 @@ jobs:
           set -e
           echo "AOSP_LIBUFDT_EXIT_CODE=$code" | tee _audit/aosp-libufdt-status.txt
           sed -n '1,120p' _audit/aosp-libufdt.log
-          if (( code == 0 )) && test -s _audit/NONFLASHABLE-ufdt-merged.dtb; then
-            sha256sum _audit/NONFLASHABLE-ufdt-merged.dtb | tee _audit/aosp-libufdt-merged.sha256
-            fdtget -t s _audit/NONFLASHABLE-ufdt-merged.dtb / compatible || true
-            echo 'AOSP libufdt smoke test succeeds on source pair, STOCK COMPATIBILITY STILL UNVERIFIED.'
-          else
-            echo 'AOSP libufdt also rejects source pair or tool invocation; inspect above logs.'
+          if (( code != 0 )) || ! test -s _audit/NONFLASHABLE-ufdt-merged.dtb; then
+            echo "::error::AOSP libufdt failed on compiled source pair (exit $code)."
+            exit 1
           fi
+          sha256sum _audit/NONFLASHABLE-ufdt-merged.dtb | tee _audit/aosp-libufdt-merged.sha256
+          compatible="$(fdtget -t s _audit/NONFLASHABLE-ufdt-merged.dtb / compatible)"
+          [[ "$compatible" == *"qcom,atoll-ab-idp"* ]]
+          echo "AOSP_LIBUFDT_COMPATIBLE=$compatible" | tee -a _audit/aosp-libufdt-status.txt
+          echo 'STOCK_DTBO_ABI=UNVERIFIED' | tee -a _audit/aosp-libufdt-status.txt
+          echo 'FLASH_ALLOWED=NO' | tee -a _audit/aosp-libufdt-status.txt
+          echo 'AOSP libufdt source-pair overlay merge passed. Physical boot and target firmware matching UNVERIFIED.'
 
       - name: Upload diagnostic evidence only
         if: always()
