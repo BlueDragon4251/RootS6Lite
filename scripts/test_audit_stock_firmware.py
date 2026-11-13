@@ -1,7 +1,8 @@
+import hashlib
 import struct
 import unittest
 
-from audit_stock_firmware import FDT_MAGIC, fdt_metadata, parse_boot, parse_dtbo
+from audit_stock_firmware import FDT_MAGIC, fdt_metadata, parse_boot, parse_dtbo, scan_embedded_fdts
 
 
 def synthetic_fdt():
@@ -28,6 +29,7 @@ class TestStockAudit(unittest.TestCase):
     def test_raw_fdt_and_hardware_id(self):
         fdt = fdt_metadata(synthetic_fdt())
         self.assertEqual(fdt["model"], ["Samsung test"])
+        self.assertEqual(fdt["sha256"], hashlib.sha256(synthetic_fdt()).hexdigest())
         self.assertEqual(fdt["qcom_board_id"], ["0x22", "0x0"])
         self.assertEqual(parse_dtbo(synthetic_fdt())["format"], "raw-fdt")
 
@@ -38,6 +40,22 @@ class TestStockAudit(unittest.TestCase):
         parsed = parse_dtbo(header + entry + dt)
         self.assertEqual(parsed["format"], "android-dtbo-table")
         self.assertEqual(parsed["entries"][0]["fdt"]["compatible"], ["qcom,atoll-ab-idp"])
+
+    def test_embedded_fdt_hash_covers_exact_tree_only(self):
+        original = synthetic_fdt()
+        image = b"X" * 41 + original + b"not part of the FDT"
+        found = scan_embedded_fdts(image)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["offset_bytes"], 41)
+        self.assertEqual(found[0]["fdt"]["fdt_total_bytes"], len(original))
+        self.assertEqual(found[0]["fdt"]["sha256"], hashlib.sha256(original).hexdigest())
+
+    def test_dtbo_table_entry_has_fdt_sha256(self):
+        original = synthetic_fdt()
+        header = struct.pack(">8I", 0xD7B7AB1E, 64 + len(original), 32, 32, 1, 32, 4096, 0)
+        entry = struct.pack(">8I", len(original), 64, 34, 0, 0, 0, 0, 0)
+        parsed = parse_dtbo(header + entry + original)
+        self.assertEqual(parsed["entries"][0]["fdt"]["sha256"], hashlib.sha256(original).hexdigest())
 
     def test_truncated_dtbo_rejected(self):
         with self.assertRaises(ValueError):
