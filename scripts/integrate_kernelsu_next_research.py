@@ -107,11 +107,13 @@ def make_patches() -> dict[str, list[tuple[str, str, int]]]:
         ],
         "fs/read_write.c": [
             (
-                "SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)\n{\n",
+                "SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)\n"
+                "{\n\tstruct fd f = fdget_pos(fd);\n\tssize_t ret = -EBADF;\n",
                 "#ifdef CONFIG_KSU_MANUAL_HOOK\n"
                 "extern void ksu_handle_sys_read(unsigned int fd);\n"
                 "#endif\n"
                 "SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)\n{\n"
+                "\tstruct fd f = fdget_pos(fd);\n\tssize_t ret = -EBADF;\n"
                 "#ifdef CONFIG_KSU_MANUAL_HOOK\n"
                 "\tksu_handle_sys_read(fd);\n"
                 "#endif\n",
