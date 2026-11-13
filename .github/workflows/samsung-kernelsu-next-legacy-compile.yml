@@ -38,6 +38,12 @@ jobs:
       - name: Self-test compiler diagnostic parser
         run: python3 -m unittest discover -s scripts -p 'test_summarize_samsung_build.py' -v
 
+      - name: Self-test KernelSU linked-symbol and preinit-ELF auditors
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_research_symbols.py' -v
+          python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_preinit_elf.py' -v
+
       - name: Download & cryptographically verify real Samsung OSRC archive
         run: |
           set -euo pipefail
@@ -113,6 +119,29 @@ jobs:
           export SAMSUNG_COMPILER_PROFILE=aosp-clang10
           export AOSP_CLANG10_BINARY="$PWD/_toolchains/aosp-clang10/clang-r370808/bin/clang"
           bash scripts/compile_samsung_baseline.sh "$PWD/_samsung/kernel" "$PWD/_out" "$PWD/_evidence"
+
+      - name: Gate linked preinit ELF and exact AOSP10 stock research export CRC parity
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_kernelsu_preinit_elf.py \
+            --image _out/arch/arm64/boot/Image \
+            --system-map _out/System.map \
+            --report _evidence/ksu-preinit-elf-layout.json
+          # This is the byte-stable Module.symvers from successful *research*
+          # AOSP10 stock builds, NOT proof of Samsung CYE1 OEM module ABI.
+          echo 'a76b277bee7a6a8ccd30468b9233401887aea66ee049a39a67901f87dac5cd94  _out/Module.symvers' | sha256sum -c -
+          if grep -Fq 'atomic_t filter_count;' _samsung/kernel/include/linux/seccomp.h; then
+            echo '::error::Unneeded KernelSU seccomp.filter_count backport changed Samsung 4.14 export CRCs'
+            exit 1
+          fi
+          {
+            echo 'RESEARCH_STOCK_CONTROL_SYMVERS_BINARY_EQUAL=YES'
+            echo 'COMMON_EXPORTED_SYMBOLS=12559'
+            echo 'RESEARCH_STOCK_CONTROL_SYMVERS_SHA256=a76b277bee7a6a8ccd30468b9233401887aea66ee049a39a67901f87dac5cd94'
+            echo 'OEM_CYE1_MODULE_ABI=UNVERIFIED'
+            echo 'OEM_MODULE_SIGNATURE_TRUST=UNVERIFIED'
+            echo 'FLASH_ALLOWED=NO'
+          } | tee _evidence/ksu-stock-control-crc-parity.txt
 
       - name: Publish logs, configuration, and raw kernel if built
         if: always()
