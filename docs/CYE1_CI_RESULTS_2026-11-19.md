@@ -285,3 +285,55 @@ successfully compiled and statically checked, but **untested on-device**.
 This upload neither validates that repaired payload nor proves the earlier
 bootloop's cause. No new Odin TAR or kernel change was made for this finding.
 **FLASH_ALLOWED=NO for KernelSU; bootloop cause unresolved.**
+
+## 2026-11-19 — remaining archived boot/recovery logs
+
+The owner supplied three additional private evidence files after the first
+retained-last-kmsg review:
+
+| Private input | Bytes / lines | SHA256 |
+| --- | --- | --- |
+| DropBox index | 1,898 / 33 | `2c9b0ac83d110af1f8206d24446332820a8d086aaec02008b5c4ad7eda00462f` |
+| Attempted full proc last-kmsg read | 41 / 1 | `321450d0499e5c58000d3035a8f3ef81e72805ace84b22c460369be029818e3b` |
+| Four remaining archived boot/recovery entries | 269,543 / 3,590 | `15eea9b75eefddb5ca31b8291c2d678b3038ad9ad9b104abbe760f089708d680` |
+
+The direct `/proc/last_kmsg` read returned **Permission denied**, not an empty
+kernel log. No permission changes or privileged workaround were attempted.
+The index lists 26 entries, including two same-tag older LAST_KMSG entries;
+the exact-tag export returned both. The following line references are to
+the owner's combined `RootS6Lite-remaining-bootlogs.txt`, not a public copy.
+
+| Entry / lines | Actual retained content | Diagnostic limit |
+| --- | --- | --- |
+| Older LAST_KMSG, 8–1478 | Truncated XBL/ABL bootloader sequence, ending at UEFI handoff | No Linux/KSU crash trace in this fragment; the outer cached header names the OEM kernel. |
+| Second older LAST_KMSG, 1481–2083 | Real Linux messages around 14,724–14,955 seconds of uptime, userspace/device shutdown, then explicit `reboot: Restarting system with command 'userrequested'` (2076) | Substantial NUL/control-character and textual corruption; no readable panic/Oops/call-trace or KSU marker. The cached OEM header alone is not exact Image authentication. This is not an observed immediate early-KSU boot failure. |
+| SYSTEM_RECOVERY_KMSG, 2092–2651 | Recovery process, touch/key events, manual mode, and `Reboot to bootloader` / `SecReboot(bootloader)` | The outer CI-kernel header is not evidence that this recovery body ran our KSU kernel. |
+| SYSTEM_RECOVERY_LOG, 2659–3590 | Earlier manual recovery session with `Reboot system now`, followed by the matching recovery-to-bootloader session | Its actual recovery process reports the **OEM** kernel/compiler at line 3070, despite the outer cached CI header at 2666. This concretely demonstrates why the outer header must not identify the body's kernel. |
+
+The older Linux segment was searched as binary-tolerant text, so NUL bytes
+did not silently stop the scan. Its damaged `vold` / `reboot_on_failure`
+message (2015) appears during an already progressing shutdown; without intact
+context or linkage to the KSU test it is not a diagnosed bootloop cause.
+The recovery label `[start failed section]`, property-setting denials, and
+missing optional firmware files are likewise not standalone KSU-failure
+evidence: the recorded recovery continues to respond to the user's keys.
+No OEM reset-code decoding, hardware-failure diagnosis, or security-policy
+relaxation is inferred from these records.
+
+**Concrete next read-only lead:** recovery explicitly copies
+`/proc/last_kmsg` to `/cache/recovery/last_kernel` (2369/2447 and 3504/3539).
+Its directory listing records **2,097,136 bytes** for `last_kernel` (2921),
+with file mode `0644`. This is a larger historical copy than the archived
+64-KiB tails. Its present existence, parent-directory access and SELinux
+permission are **unknown**; file mode alone does not grant ADB access.
+A normal, exact-path `adb pull /cache/recovery/last_kernel <host-file>` is
+the next bounded check. Stop on denial; do not change permissions or assume
+that this copy belongs to the failed KSU start. Recovery's internal clock
+also shows an old date, so those directory timestamps are not used as
+reliable incident dates.
+
+The archive review has not established the earlier KSU bootloop's root
+cause. The already verified five-hook/phase-trace research build remains
+untested on-device. **No new kernel change, Odin package, physical flash,
+or claim of a bootloop repair is made from this log evidence.**
+Raw logs and device identifiers remain private. **FLASH_ALLOWED=NO for KernelSU.**
