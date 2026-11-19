@@ -176,3 +176,11 @@ artifact, hashes, signing-verification boundaries, new OEM-public-cert gate,
 DTB/DTBO status, and remaining blockers are fully documented in
 [the 17:12 UTC independent follow-up](CYE1_KSU_FOLLOWUP_2026-11-19_1712UTC.md).
 **No KSU flash approval, no main merge, and no OEM module trust proof.**
+
+## Physical KSU bootloop postmortem update — 2026-11-19 18:12 UTC
+
+The physical device has now tested the separate KernelSU-enabled CYE1 image from [run 44569794596](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44569794596). **It bootlooped.** This supersedes earlier statements in this report that this KSU build had not yet been tried. The successful physical boot belongs **only** to the non-KSU baseline. The KSU CI checks (12,530/12,530 reconstructed exports, linked manual hooks, static preinit ELF, release/certificate/CI module signatures) remain reproducible but **do not demonstrate device bootability or root**.
+
+Known-failing TAR SHA256 `e3b1fe96470973ea99a603d657700d039a20fc8aa4b1a79cc876bbf276dd0626`. No panic log, crash phase or confirmed rollback outcome yet; root cause unknown. No same-binary reflashing; retain stock firmware and known-good baseline for recovery. The source verifier [44584798284](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44584798284) and source audit [44584783375](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44584783375) passed after incident documentation; neither rebuilds the KSU kernel. Source audit artifact `14559258252` again rejects `4.14.357-openela` as a stock `4.14.190` replacement. Details and specific stop conditions are in [the physical incident report](CYE1_KERNELSU_NEXT_TEST_PACKAGE_2026-11-19.md#physical-device-incident--2026-11-19) and [new KSU follow-up](CYE1_KSU_FOLLOWUP_2026-11-19_1712UTC.md#physical-ksu-bootloop-postmortem-update--2026-11-19-1812-utc).
+
+**FLASH_ALLOWED=NO for KernelSU; physical boot FAILED; root NOT VERIFIED.** No merge to `main`, no new flash package, no weakening of CRC or signature checks.
