@@ -3,7 +3,8 @@
 
 Requires the user's SHA256-pinned stock boot.img and a independently inspected,
 CI-built Image. The default baseline mode rejects KernelSU; the explicit
-KernelSU mode requires a linked-symbol/ELF audit and pinned KSU provenance.
+KernelSU mode requires raw-Image call-edge/ELF and diagnostic trace audits,
+plus pinned KSU provenance.
 Keeps the original ramdisk/DTB and Samsung
 SignerVer02 trailer. Replaces the OEM-signed AVB footer with a *self-consistent
 but UNSIGNED* hash footer; bootloader acceptance is NOT established.
@@ -11,6 +12,7 @@ but UNSIGNED* hash footer; bootloader acceptance is NOT established.
 This is not an official Samsung image and carries no claim of safe booting.
 """
 import argparse
+from bisect import bisect_right
 import gzip
 import hashlib
 import io
@@ -25,6 +27,8 @@ import tempfile
 from pathlib import Path
 
 from compare_full_cye1_export_abi import compare as compare_exports
+from instrument_kernelsu_boot_trace import verify_linked_trace
+from verify_kernelsu_call_edges import SAMSUNG_CYE1_CALLERS
 from verify_kernelsu_research_symbols import audit as audit_ksu_symbols
 from verify_kernelsu_preinit_elf import inspect as inspect_ksu_elf
 
@@ -98,6 +102,9 @@ def pinned_tool(script: Path, commit: str) -> None:
     head = run("git", "-C", str(script.parent), "rev-parse", "HEAD").strip()
     if head != commit:
         raise ValueError(f"Tool {script} has commit {head}, expected {commit}")
+    dirty = run("git", "-C", str(script.parent), "status", "--porcelain=v1", "--untracked-files=all")
+    if dirty.strip():
+        raise ValueError(f"Tool {script} has modified or untracked sources; pinned HEAD alone is insufficient")
 
 
 def parse_avb_info(text: str) -> tuple[int, str]:
@@ -173,12 +180,83 @@ def verify_ksu_hook_manifest(hooks: str) -> None:
         raise ValueError("Obsolete four-hook manifest incorrectly claims reboot callback is missing")
 
 
+def verify_ksu_raw_call_edges(image: bytes, system_map: str) -> dict:
+    """Decode BL words inside distinct, map-bounded Samsung caller functions.
+
+    This is tied to the Image bytes, not an objdump JSON claim. System.map has
+    no symbol sizes, so the next distinct text-symbol address bounds each
+    function. Aliases at the same address cannot stand in for separate callers.
+    An exact handler-entry branch does not establish correct arguments or boot.
+    """
+    callers = [name for names in SAMSUNG_CYE1_CALLERS.values() for name in names]
+    required = {"_text", "_etext", *SAMSUNG_CYE1_CALLERS, *callers}
+    symbols = {}
+    text_addresses = set()
+    for line in system_map.splitlines():
+        columns = line.split()
+        if len(columns) != 3:
+            continue
+        address, kind, name = columns
+        if kind in ("t", "T"):
+            text_addresses.add(int(address, 16))
+        if name in required:
+            if name in symbols:
+                raise ValueError(f"Duplicate required System.map symbol: {name}")
+            symbols[name] = (int(address, 16), kind)
+    missing = sorted(required - symbols.keys())
+    if missing:
+        raise ValueError("Raw call audit missing System.map symbols: " + ", ".join(missing))
+    base, text_end = symbols["_text"][0], symbols["_etext"][0]
+    if base % 4 or text_end % 4 or not 0 < text_end - base <= len(image):
+        raise ValueError("System.map text range is outside the raw Image or unaligned")
+    for name in required - {"_etext"}:
+        address, kind = symbols[name]
+        if kind not in ("t", "T") or address % 4 or not base <= address < text_end:
+            raise ValueError(f"Required symbol is not aligned Image text: {name}")
+    functions = [symbols[name][0] for name in (*callers, *SAMSUNG_CYE1_CALLERS)]
+    if len(set(functions)) != len(functions):
+        raise ValueError("Required caller/handler functions must have distinct addresses; aliases are not call evidence")
+    boundaries = sorted({address for address in text_addresses if base <= address < text_end} | {text_end})
+    calls = []
+    for hook, expected_callers in SAMSUNG_CYE1_CALLERS.items():
+        target = symbols[hook][0]
+        for caller in expected_callers:
+            start = symbols[caller][0]
+            end = boundaries[bisect_right(boundaries, start)]
+            if end % 4:
+                raise ValueError(f"Unaligned System.map function boundary: {caller}")
+            matches = []
+            for address in range(start, end, 4):
+                word = struct.unpack_from("<I", image, address - base)[0]
+                if word & 0xFC000000 != 0x94000000:  # AArch64 BL imm26, not B/BLR.
+                    continue
+                immediate = word & 0x03FFFFFF
+                if immediate & 0x02000000:
+                    immediate -= 0x04000000
+                if address + immediate * 4 == target:
+                    matches.append(address)
+            if len(matches) != 1:
+                raise ValueError(f"Raw Image requires exactly one BL from {caller} to exact {hook} entry; found {len(matches)}")
+            calls.append({"caller": caller, "hook": hook, "address": f"0x{matches[0]:x}",
+                          "target": f"0x{target:x}", "caller_start": f"0x{start:x}", "caller_end": f"0x{end:x}"})
+    return {"profile": "samsung-cye1-raw-image", "call_count": len(calls), "calls": calls,
+            "image_sha256": sha256(image), "system_map_sha256": sha256(system_map.encode()),
+            "runtime_correctness_proven": False}
+
+
+def verify_ksu_trace(manifest: dict, image: bytes, config: str) -> dict:
+    trace = verify_linked_trace(manifest, image, config)
+    if not trace["LINKED_TRACE_MARKERS_VALID"] or not trace["TRACE_CONFIG_GATES_VALID"]:
+        raise ValueError("KernelSU diagnostic trace markers or stock-security config gates failed")
+    return trace
+
+
 def verify_ksu_inputs(args, image: bytes) -> dict:
     if sha256(image) == KNOWN_FAILED_KSU_IMAGE_SHA256:
         raise ValueError("Known failed on-device KernelSU Image: do not repackage or reflash")
-    required = ("ksu_config", "system_map", "baseline_image", "ksu_provenance", "ksu_hooks_manifest")
-    if any(getattr(args, field) is None for field in required):
-        raise ValueError("KernelSU mode requires config, System.map, booted baseline, upstream and hook manifests")
+    required = ("ksu_config", "system_map", "baseline_image", "ksu_provenance", "ksu_hooks_manifest", "ksu_trace_manifest")
+    if any(getattr(args, field, None) is None for field in required):
+        raise ValueError("KernelSU mode requires config, System.map, booted baseline, upstream, hook and trace manifests")
     config = args.ksu_config.read_bytes()
     if sha256(config) != KSU_CONFIG_SHA256:
         raise ValueError("KernelSU effective config differs from CI-audited profile")
@@ -190,17 +268,24 @@ def verify_ksu_inputs(args, image: bytes) -> dict:
     if f"KSU_UPSTREAM_LEGACY_COMMIT={KSU_UPSTREAM_REVISION}" not in provenance:
         raise ValueError("KernelSU Next upstream revision is unverified")
     verify_ksu_hook_manifest(args.ksu_hooks_manifest.read_text())
+    system_map = args.system_map.read_text()
+    call_edges = verify_ksu_raw_call_edges(image, system_map)
+    trace_bytes = args.ksu_trace_manifest.read_bytes()
+    trace = verify_ksu_trace(json.loads(trace_bytes), image, config.decode())
     symbols = audit_ksu_symbols(args.ksu_config, args.system_map)
     if not all(symbols[k] for k in ("KSU_CONFIG_VALID", "KSU_MANUAL_HOOKS_LINKED", "KSU_PREINIT_EMBEDDED")):
         raise ValueError("KernelSU configuration, linked hook or preinit symbol audit failed")
     if symbols["KSU_PREINIT_BLOB_BYTES"] != 17280:
         raise ValueError("KernelSU preinit runner size differs from audited pinned upstream")
-    elf = inspect_ksu_elf(image, args.system_map.read_text())
+    elf = inspect_ksu_elf(image, system_map)
     if not elf["KSU_PREINIT_ELF_LAYOUT_VALID"] or not elf["KSU_PREINIT_ELF_STATIC"]:
         raise ValueError("Embedded KernelSU preinit ELF failed independent validation")
     return {
         "kernelsu_upstream_commit": KSU_UPSTREAM_REVISION,
         "kernelsu_manual_hooks_linked": True,
+        "kernelsu_raw_call_edges": call_edges,
+        "kernelsu_boot_trace": trace,
+        "ksu_trace_manifest_sha256": sha256(trace_bytes),
         "kernelsu_preinit_runner_bytes": elf["KSU_PREINIT_RUNNER_BYTES"],
         "kernelsu_preinit_runner_sha256": elf["KSU_PREINIT_RUNNER_SHA256"],
         "kernelsu_preinit_page_congruence": elf["PAGE_CONGRUENCE_VERIFIED"],
@@ -226,6 +311,8 @@ def main() -> None:
     parser.add_argument("--baseline-image", type=Path)
     parser.add_argument("--ksu-provenance", type=Path)
     parser.add_argument("--ksu-hooks-manifest", type=Path)
+    parser.add_argument("--ksu-trace-manifest", type=Path,
+                        help="Required source instrumentation manifest for the current KSU diagnostic profile")
     parser.add_argument("--mkbootimg-directory", required=True, type=Path)
     parser.add_argument("--avbtool-directory", required=True, type=Path)
     parser.add_argument("--output-tar", required=True, type=Path)
