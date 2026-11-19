@@ -49,7 +49,12 @@ dependencies remain open. Even all green offline gates cannot prove a boot.
 - Verify the tablet is **SM-P613 / P613XXS8CYE1**, unlocked (orange), and has
   sufficient charge. Back up important data; flashing/recovery may erase it.
 - Keep the **matching complete stock firmware** and Odin on the PC, with a
-  working USB cable and Download Mode. Do not rely on fastboot (unavailable).
+  working USB cable and Download Mode. **Correction from 2026-11-19:** the
+  owner demonstrated UEFI bootloader Fastboot (`fastboot devices` and
+  `fastboot getvar all`, `is-userspace:no`), despite earlier assumptions.
+  Fastboot supports read-only metadata queries but unverified temporary boot,
+  raw partition fetching and boot-image flashing must not replace the known
+  Odin recovery procedure without independent device-specific tests.
 - Confirm the provided TAR SHA256 independently. In Odin, use **AP only** for
   this boot-only TAR. Never enable `Re-Partition`, provide a PIT, or add an
   unrelated `BL`/`CP`/`CSC` during the experiment.
@@ -151,3 +156,22 @@ Wi-Fi/Bluetooth/audio/camera/charging and suspend/resume are still
 pending physical checks. The success of the baseline is permission
 to continue separate KernelSU research, **not permission to flash
 a new KernelSU image before its independent verification**.
+
+### Bootloader diagnostic capability update (2026-11-19)
+
+During the failed separate KSU experiment, the owner reached an actual
+**Fastboot Mode** screen and the PC recognized it using the standard `fastboot`
+client. `getvar all` confirmed an unlocked UEFI bootloader, not userspace
+fastbootd: `unlocked:yes`, `is-userspace:no`, `kernel:uefi`, and
+`max-download-size:805306368`. The output lists `boot` as 0x6000000 bytes
+and potential diagnostic partitions `logdump` (0x4000000), `logfs`
+(0x800000), `rawdump` (0x1000000) and `debug` (0xA00000).
+
+**Do not confuse partition names with recoverable crash logs.** A read-only
+`fastboot getvar max-fetch-size` query was requested to establish whether
+the optional Fastboot fetch protocol may be available. Its result and actual
+readback are not yet known. `getvar all` contained no `max-fetch-size` line.
+There is no evidence that `fastboot fetch logdump` or `fastboot boot` is
+implemented; neither operation has been authorized as a recovery mechanism.
+Do not use `flash`, `erase`, `format`, `-w`, `set_active`, or unverified OEM
+commands to chase logs. Avoid publishing serial numbers or raw dumps.
