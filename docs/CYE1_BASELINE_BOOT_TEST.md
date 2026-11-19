@@ -68,3 +68,39 @@ dependencies remain open. Even all green offline gates cannot prove a boot.
 This guide documents the test protocol. It is **not** an instruction to flash
 an unverified CI artifact. The final TAR and hashes must be supplied only
 after the post-change GitHub Actions build and archive checks are complete.
+
+## Observed package preparation, 2026-11-19
+
+- CYE1 research compile [GitHub Actions 44507834398](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44507834398)
+  finished **successfully**, with all compilation and ABI-comparison steps
+  green. Artifact 14524431159 ZIP SHA256:
+  `d0c2c08e4335000f4788607bfc42d6d3050084e42d96d167f9933358ceb5070b`.
+- Rebuilt `Image` SHA256:
+  `5609cb6faa2a6f07f4a0d0a2205f0d06fe696697cb6efc456d05a6b24d57d600`
+  (48,828,432 bytes). Stock-reconstructed `Module.symvers` full export
+  comparison **12,530/12,530 exact**, symvers SHA256:
+  `2c8e251d7c1c4c6f617f4f68808f355db3fc90b1126ffc24cd73c734eccb497e`.
+- The pristine CI config matches authentic stock IKCONFIG byte-for-byte
+  (SHA256 `1bb058a8ea9cd72287e2f33fad7745bcc9733c453fbfec7c312352d8cc728208`).
+  The compiled effective config differs in exactly **one string option**:
+  `CONFIG_SYSTEM_TRUSTED_KEYS` points to the stock public signing cert;
+  verified effective-config SHA256:
+  `a0370e63486576da637d933966c32e4a271e471cc0b1fa6fc7bb1604c2488a96`.
+- The package script completed every integrity check, including the embedded
+  public X.509 certificate, gzip decompression roundtrip, exact stock
+  ramdisk/DTB bytes, header metadata, Samsung 528-byte signer block, 100 MB
+  partition footprint, unsigned AVB hash verification, and USTAR readback.
+- Actual new `boot.img` SHA256:
+  `640da30f79fea0deb45bdcdb7e75841a285eb4af55dea149f0f6e8be070e2061`.
+  Generated TAR `RootS6Lite_SM-P613_CYE1_BASELINE_EXPERIMENTAL.tar`,
+  **100,669,440 bytes**, SHA256:
+  `e98e22019d02e2a21e9f14db8be4466e7e5ab97c7924e49d40a64e380e2a98b3`.
+- The TAR and machine-readable package report were handed to the device owner
+  privately, **not uploaded to GitHub**. The original `boot.img` and OEM
+  private signing key are absent from the repository.
+
+**Still unverified:** bootloader acceptance of the unsigned AVB footer and
+stale OEM signer bytes; physical boot, OEM module loading, Wi-Fi and other
+devices, Samsung compiler binary equivalence, and rooted KernelSU behavior.
+The pending next result is the owner's first-boot outcome. A successful
+package *generation* is not a successful device boot.
