@@ -15,6 +15,9 @@ on:
       - 'scripts/test_extract_verified_stock_kernel.py'
       - 'scripts/compare_stock_export_abi.py'
       - 'scripts/test_compare_stock_export_abi.py'
+      - 'scripts/package_cye1_baseline_odintar.py'
+      - 'scripts/test_package_cye1_baseline_odintar.py'
+      - 'assets/p613-cye1-stock-module-signing-public.pem'
       - 'docs/SAMSUNG_SOURCE.md'
   pull_request:
     paths:
@@ -30,6 +33,9 @@ on:
       - 'scripts/test_extract_verified_stock_kernel.py'
       - 'scripts/compare_stock_export_abi.py'
       - 'scripts/test_compare_stock_export_abi.py'
+      - 'scripts/package_cye1_baseline_odintar.py'
+      - 'scripts/test_package_cye1_baseline_odintar.py'
+      - 'assets/p613-cye1-stock-module-signing-public.pem'
       - 'docs/SAMSUNG_SOURCE.md'
   workflow_dispatch:
 permissions:
@@ -64,3 +70,8 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts -p 'test_extract_verified_stock_kernel.py' -v
           python3 -m unittest discover -s scripts -p 'test_compare_stock_export_abi.py' -v
+
+      - name: Test offline guarded Odin package structure (no OEM binary)
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_package_cye1_baseline_odintar.py' -v
+          test "$(openssl x509 -in assets/p613-cye1-stock-module-signing-public.pem -outform DER | sha256sum | cut -d' ' -f1)" = 'ff40a362febb34f98dd1f23a41e8ab4cc9ffbcba9152eee68ee2fbbf007d03b1'
