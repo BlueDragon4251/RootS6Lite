@@ -159,3 +159,20 @@ A separate local experimental TAR is documented in
 package was generated, attached or deployed by this research follow-up.
 **FLASH_ALLOWED=NO; no merge to `main`, no CYE1-KernelSU push without the
 explicit `[cye1-kernelsu]` commit marker.**
+
+
+## Latest post-boot follow-up (2026-11-19 17:12 UTC)
+
+**Newer than the status described above:** the owner has since confirmed physical
+Android userland boot of the **non-KernelSU CYE1 baseline** on the SM-P613,
+with `getenforce=Enforcing`, AVB `orange`, and bootloader `locked=0`.
+This supersedes the prior statement that *no baseline physical boot* had been
+observed. The separate **KernelSU kernel remains untested on the device**.
+
+The newer explicit KernelSU research [run 44569794596](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44569794596)
+**completed successfully** with preserved CYE1 reconstructed CRC parity,
+linked hooks and preinit, and exact CYE1 release string. Its actual downloaded
+artifact, hashes, signing-verification boundaries, new OEM-public-cert gate,
+DTB/DTBO status, and remaining blockers are fully documented in
+[the 17:12 UTC independent follow-up](CYE1_KSU_FOLLOWUP_2026-11-19_1712UTC.md).
+**No KSU flash approval, no main merge, and no OEM module trust proof.**
