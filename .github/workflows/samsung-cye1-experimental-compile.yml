@@ -8,6 +8,7 @@ on:
       - 'scripts/extract_samsung_cye1_source.py'
       - 'scripts/test_extract_samsung_cye1_source.py'
       - 'scripts/compile_samsung_baseline.sh'
+      - 'assets/p613-cye1-stock-module-signing-public.pem'
       - 'scripts/compare_compiled_cye1_abi.py'
       - 'scripts/test_compare_compiled_cye1_abi.py'
       - 'scripts/compare_full_cye1_export_abi.py'

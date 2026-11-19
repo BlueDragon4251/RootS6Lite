@@ -132,6 +132,12 @@ case "$COMPILER_PROFILE" in
     ;;
 esac
 args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TRIPLE" REAL_CC="$REAL_COMPILER" DTC_EXT="$DTC_EXT" CONFIG_BUILD_ARM64_DT_OVERLAY=y KCFLAGS="$KCFLAGS_PROFILE")
+if [[ "$SOURCE_PROFILE" == official-cye1 ]]; then
+  # Samsung's build ID is appended after CONFIG_LOCALVERSION="-perf".
+  # A mismatching release string makes otherwise compatible stock .ko files
+  # fail their vermagic check before genksyms CRCs can even be considered.
+  args+=(LOCALVERSION=-28683246-abP613XXS8CYE1)
+fi
 {
   echo "SOURCE_VERSION=4.14.190"
   echo "TEMP_SOURCE_CHANGE=Python2 wrapper, two digital-cdc void prototypes, two camera CPAS pointer-to-handle casts (CI-only); original Samsung archive unchanged"
@@ -190,6 +196,28 @@ if grep -Eq '^CONFIG_TZIC(=|_)' "$OUT/.config"; then
   exit 1
 fi
 cp "$OUT/.config" "$EVIDENCE/stock-generated.config"
+if [[ "$SOURCE_PROFILE" == official-cye1 ]]; then
+  # Independently extracted P613XXS8CYE1 boot.img IKCONFIG, pinned by hash.
+  # This validates the pristine Samsung configuration BEFORE the one necessary
+  # trust-store addition for the reconstructed kernel.
+  echo '1bb058a8ea9cd72287e2f33fad7745bcc9733c453fbfec7c312352d8cc728208  '"$OUT/.config" | sha256sum -c -
+
+  # CONFIG_MODULE_SIG_FORCE=y means the original OEM-signed .ko files must be
+  # verified by a trusted public certificate. The generated CI signing key
+  # cannot do that. Import only the public X.509 cert extracted from the
+  # SHA256-pinned original CYE1 kernel. Never import an OEM private key.
+  OEM_CERT="$SCRIPT_DIR/../assets/p613-cye1-stock-module-signing-public.pem"
+  OEM_CERT_DER_SHA256=ff40a362febb34f98dd1f23a41e8ab4cc9ffbcba9152eee68ee2fbbf007d03b1
+  test "$(openssl x509 -in "$OEM_CERT" -outform DER | sha256sum | cut -d' ' -f1)" = "$OEM_CERT_DER_SHA256"
+  cp "$OEM_CERT" "$SRC/certs/roots6lite-p613-cye1-oem-public.pem"
+  "$SRC/scripts/config" --file "$OUT/.config" --set-str SYSTEM_TRUSTED_KEYS 'certs/roots6lite-p613-cye1-oem-public.pem'
+  make "${args[@]}" olddefconfig 2>&1 | tee "$EVIDENCE/oem-public-trust-config.log"
+  grep -Fqx 'CONFIG_SYSTEM_TRUSTED_KEYS="certs/roots6lite-p613-cye1-oem-public.pem"' "$OUT/.config"
+  echo "STOCK_OEM_MODULE_SIGNER_DER_SHA256=$OEM_CERT_DER_SHA256" >> "$EVIDENCE/provenance.txt"
+  echo 'STOCK_PUBLIC_SIGNER_CERT=IMPORTED_UNTRUSTED_RUNTIME_STOCK_MODULES_NOT_YET_VERIFIED' >> "$EVIDENCE/provenance.txt"
+  echo 'TARGET_KERNELRELEASE=4.14.190-perf-28683246-abP613XXS8CYE1' >> "$EVIDENCE/provenance.txt"
+fi
+cp "$OUT/.config" "$EVIDENCE/build-effective.config"
 sha256sum "$OUT/.config" > "$EVIDENCE/config.sha256"
 # The CWL1 reconstruction has an independently validated historical hash.
 # The new Samsung CYE1 source has its own unpinned .config until verified
@@ -198,7 +226,12 @@ if [[ "$SOURCE_PROFILE" == cwl1-control ]]; then
   echo "3345e9d95ccc30da221c345f3f25fb974e42d890c2f630bb52fe8be2ef9716df  $OUT/.config" | sha256sum -c -
   echo "CYE1_CONFIG_PARITY=ALL_CONFIG_LINES_MATCH_EXCEPT_ONE_DISABLED_SOURCE_ABSENT_OPTION" | tee -a "$EVIDENCE/status.txt"
 else
-  echo "CYE1_NEW_SOURCE_CONFIG=GENERATED_HASH_RECORDED_NOT_YET_AUTHENTICATED_AGAINST_STOCK" | tee -a "$EVIDENCE/status.txt"
+  echo "CYE1_PRISTINE_CONFIG=BYTE_IDENTICAL_TO_AUTHENTICATED_STOCK_BEFORE_PUBLIC_CERT_TRUST_ADDITION" | tee -a "$EVIDENCE/status.txt"
+fi
+if [[ "$SOURCE_PROFILE" == official-cye1 ]]; then
+  ACTUAL_RELEASE="$(make -s "${args[@]}" kernelrelease)"
+  test "$ACTUAL_RELEASE" = '4.14.190-perf-28683246-abP613XXS8CYE1' || { echo "::error::Unexpected kernelrelease $ACTUAL_RELEASE"; exit 1; }
+  echo "KERNELRELEASE=$ACTUAL_RELEASE" | tee -a "$EVIDENCE/status.txt"
 fi
 grep -F 'CONFIG_KALLSYMS=y' "$OUT/.config"
 grep -F '# CONFIG_KPROBES is not set' "$OUT/.config"
