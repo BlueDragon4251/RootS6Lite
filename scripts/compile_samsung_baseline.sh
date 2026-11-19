@@ -244,6 +244,14 @@ if [[ "${ROOTS6_KSU_RESEARCH:-0}" == "1" ]]; then
   python3 "$SCRIPT_DIR/integrate_kernelsu_next_research.py" \
     --source "$SRC" --upstream "$KSU_UPSTREAM_ROOT" \
     --manifest "$EVIDENCE/ksu-manual-hooks-provenance.txt"
+  # Optional bounded phase logging only: no hook is skipped and no KSU_DEBUG
+  # (which changes the default shell-root policy) is enabled for diagnostics.
+  if [[ "${ROOTS6_KSU_BOOT_TRACE:-0}" == "1" ]]; then
+    python3 "$SCRIPT_DIR/instrument_kernelsu_boot_trace.py" apply \
+      --upstream "$KSU_UPSTREAM_ROOT" \
+      --manifest "$EVIDENCE/ksu-boot-trace-source.json"
+    echo 'KSU_BOOT_TRACE=BOUNDED_PRINTK_ONLY_NO_DEBUG_MODE' >> "$EVIDENCE/provenance.txt"
+  fi
   "$SRC/scripts/config" --file "$OUT/.config" --enable KSU --enable KSU_MANUAL_HOOK
   make "${args[@]}" olddefconfig 2>&1 | tee "$EVIDENCE/ksu-legacy-olddefconfig.log"
   grep -Fqx 'CONFIG_KSU=y' "$OUT/.config"
@@ -296,6 +304,12 @@ if [[ "${ROOTS6_KSU_RESEARCH:-0}" == "1" ]]; then
   python3 "$SCRIPT_DIR/verify_kernelsu_research_symbols.py" \
     --config "$OUT/.config" --system-map "$OUT/System.map" \
     --report "$EVIDENCE/ksu-linked-symbols-audit.json" | tee -a "$EVIDENCE/status.txt"
+  if [[ "${ROOTS6_KSU_BOOT_TRACE:-0}" == "1" ]]; then
+    python3 "$SCRIPT_DIR/instrument_kernelsu_boot_trace.py" verify \
+      --image "$OUT/arch/arm64/boot/Image" --config "$OUT/.config" \
+      --manifest "$EVIDENCE/ksu-boot-trace-source.json" \
+      --report "$EVIDENCE/ksu-boot-trace-linked.json" | tee -a "$EVIDENCE/status.txt"
+  fi
 fi
 sha256sum "$OUT/arch/arm64/boot/Image" >> "$EVIDENCE/provenance.txt"
 # The authenticated P613XXS8CYE1 boot and recovery use the *same* decompressed

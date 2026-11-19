@@ -26,6 +26,7 @@ REQUIRED_HOOK_SYMBOLS = (
     "ksu_handle_faccessat",
     "ksu_handle_stat",
     "ksu_handle_sys_read",
+    "ksu_handle_sys_reboot",
 )
 REQUIRED_PREINIT_SYMBOLS = (
     "ksu_preinit_init",

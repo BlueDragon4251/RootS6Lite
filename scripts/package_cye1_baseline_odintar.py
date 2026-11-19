@@ -43,6 +43,7 @@ BOOTED_BASELINE_IMAGE_SHA256 = "5609cb6faa2a6f07f4a0d0a2205f0d06fe696697cb6efc45
 STOCK_COMPATIBLE_SYMVERS_SHA256 = "2c8e251d7c1c4c6f617f4f68808f355db3fc90b1126ffc24cd73c734eccb497e"
 KSU_CONFIG_SHA256 = "d1261c855df36e575bf12219c6831955f75d76f4706659d9c9245f0dbaf86416"
 KSU_UPSTREAM_REVISION = "e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a"
+KNOWN_FAILED_KSU_IMAGE_SHA256 = "b3d551884c1fd95ed5632deac3691bbe343f30a3dfb91833c48c57c12ba418a7"
 
 
 def sha256(data: bytes) -> str:
@@ -159,7 +160,22 @@ def tar_odin(boot: Path, output: Path) -> None:
             tar.addfile(info, source)
 
 
+def verify_ksu_hook_manifest(hooks: str) -> None:
+    lines = set(hooks.splitlines())
+    for line in (
+        "KPROBES_REMAIN_DISABLED=YES",
+        "HOOKS=execve,execveat,compat_execve,compat_execveat,faccessat,read,newfstatat,reboot",
+        "UPSTREAM_REBOOT_HOOK_DETECTOR=UNCHANGED",
+    ):
+        if line not in lines:
+            raise ValueError(f"Manual KernelSU hook provenance missing: {line}")
+    if any(line.startswith("NO_OBSOLETE_REBOOT_HOOK=") for line in lines):
+        raise ValueError("Obsolete four-hook manifest incorrectly claims reboot callback is missing")
+
+
 def verify_ksu_inputs(args, image: bytes) -> dict:
+    if sha256(image) == KNOWN_FAILED_KSU_IMAGE_SHA256:
+        raise ValueError("Known failed on-device KernelSU Image: do not repackage or reflash")
     required = ("ksu_config", "system_map", "baseline_image", "ksu_provenance", "ksu_hooks_manifest")
     if any(getattr(args, field) is None for field in required):
         raise ValueError("KernelSU mode requires config, System.map, booted baseline, upstream and hook manifests")
@@ -173,14 +189,7 @@ def verify_ksu_inputs(args, image: bytes) -> dict:
     provenance = args.ksu_provenance.read_text()
     if f"KSU_UPSTREAM_LEGACY_COMMIT={KSU_UPSTREAM_REVISION}" not in provenance:
         raise ValueError("KernelSU Next upstream revision is unverified")
-    hooks = args.ksu_hooks_manifest.read_text()
-    for line in (
-        "KPROBES_REMAIN_DISABLED=YES",
-        "HOOKS=execve,execveat,compat_execve,compat_execveat,faccessat,read,newfstatat",
-        "NO_OBSOLETE_REBOOT_HOOK=upstream_missing",
-    ):
-        if line not in hooks.splitlines():
-            raise ValueError(f"Manual KernelSU hook provenance missing: {line}")
+    verify_ksu_hook_manifest(args.ksu_hooks_manifest.read_text())
     symbols = audit_ksu_symbols(args.ksu_config, args.system_map)
     if not all(symbols[k] for k in ("KSU_CONFIG_VALID", "KSU_MANUAL_HOOKS_LINKED", "KSU_PREINIT_EMBEDDED")):
         raise ValueError("KernelSU configuration, linked hook or preinit symbol audit failed")

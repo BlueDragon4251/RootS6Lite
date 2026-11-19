@@ -38,15 +38,19 @@ def verify_pinned_upstream(upstream: Path) -> None:
         "kernel/runtime/ksud_integration.c": [
             "void ksu_handle_sys_read(unsigned int fd)",
         ],
+        "kernel/supercall/supercall.c": [
+            "int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,\n"
+            "\t\t\t  void __user **arg)",
+        ],
     }
     for name, needles in required.items():
         body = (upstream / name).read_text()
         for needle in needles:
             if needle not in body:
                 raise ValueError(f"Pinned upstream ABI changed: {name}: {needle}")
-    # Some online integration guides show an old 3-argument sys_read ABI and a
-    # reboot callback; neither exists at the selected upstream legacy commit.
-    # Do not link against obsolete, missing functions just to follow a guide.
+    # The guide's older 3-argument sys_read ABI differs from this pin. The
+    # reboot handler DOES exist, under supercall/supercall.c, and is required
+    # for the manual manager/ksud communication path. Validate all five APIs.
 
 
 def make_patches() -> dict[str, list[tuple[str, str, int]]]:
@@ -145,6 +149,35 @@ def make_patches() -> dict[str, list[tuple[str, str, int]]]:
                 1,
             ),
         ],
+        "kernel/reboot.c": [
+            (
+                "SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,\n",
+                "#ifdef CONFIG_KSU_MANUAL_HOOK\n"
+                "extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,\n"
+                "                                 void __user **arg);\n"
+                "#endif\n"
+                "SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,\n",
+                1,
+            ),
+            (
+                "SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,\n"
+                "\t\tvoid __user *, arg)\n"
+                "{\n\tstruct pid_namespace *pid_ns = task_active_pid_ns(current);\n"
+                "\tchar buffer[256];\n\tint ret = 0;\n\n"
+                "\t/* We only trust the superuser with rebooting the system. */\n"
+                "\tif (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))",
+                "SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,\n"
+                "\t\tvoid __user *, arg)\n"
+                "{\n\tstruct pid_namespace *pid_ns = task_active_pid_ns(current);\n"
+                "\tchar buffer[256];\n\tint ret = 0;\n\n"
+                "#ifdef CONFIG_KSU_MANUAL_HOOK\n"
+                "\tksu_handle_sys_reboot(magic1, magic2, cmd, &arg);\n"
+                "#endif\n\n"
+                "\t/* We only trust the superuser with rebooting the system. */\n"
+                "\tif (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))",
+                1,
+            ),
+        ],
     }
 
 
@@ -157,7 +190,7 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
     for relative, patches in make_patches().items():
         target = source / relative
         text = target.read_text()
-        if "ksu_handle_execveat" in text or "CONFIG_KSU_MANUAL_HOOK" in text:
+        if "ksu_handle_" in text or "CONFIG_KSU_MANUAL_HOOK" in text:
             raise ValueError(f"Manual hook already present: {relative}")
         for old, new, count in patches:
             text = replace_exact(text, old, new, count, relative)
@@ -179,28 +212,18 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
     if not (link_target / "Kbuild").is_file():
         raise ValueError("Pinned upstream kernel/Kbuild missing")
 
-    # The pinned upstream Kbuild detects manual hooks solely by grepping for
-    # `ksu_handle_sys_reboot` in kernel/reboot.c. However, the same pinned
-    # upstream revision does not define that callback anymore. Preserve the
-    # stop-on-missing-hooks gate by checking the *actual* four verified hook
-    # sites instead. This is an explicitly recorded CI-only Kbuild adaptation,
-    # never a fabricated reboot hook, silent bypass, or change to Samsung ZIP.
+    # Preserve the upstream manual-hook gate exactly. Its reboot callback
+    # exists in kernel/supercall/supercall.c and is now inserted above; the
+    # previous four-hook replacement incorrectly omitted this fifth API.
     kbuild = link_target / "Kbuild"
     kbuild_original = kbuild.read_bytes()
-    kbuild_old = (
+    hook_detector = (
         'HAVE_KSU_HOOK := $(shell grep -q "ksu_handle_sys_reboot" '
         '$(srctree)/kernel/reboot.c && echo 0 || echo 1)'
     )
-    kbuild_new = (
-        'HAVE_KSU_HOOK := $(shell grep -q "ksu_handle_execveat" '
-        '$(srctree)/fs/exec.c && '
-        'grep -q "ksu_handle_faccessat" $(srctree)/fs/open.c && '
-        'grep -q "ksu_handle_sys_read" $(srctree)/fs/read_write.c && '
-        'grep -q "ksu_handle_stat" $(srctree)/fs/stat.c && echo 0 || echo 1)'
-    )
-    kbuild_patched = replace_exact(
-        kbuild_original.decode(), kbuild_old, kbuild_new, 1, "upstream/kernel/Kbuild"
-    )
+    kbuild_patched = kbuild_original.decode()
+    if kbuild_patched.count(hook_detector) != 1:
+        raise ValueError("Pinned upstream Kbuild manual reboot-hook detector changed")
     # Samsung's CONFIG_RKP_NS_PROT=y changes `struct mount::mnt` from
     # an embedded `struct vfsmount` to a pointer. The upstream 4.14 backport
     # assumes the embedded form and emits invalid `mnt->mnt.mnt_flags`.
@@ -280,7 +303,7 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
     kbuild.chmod(kbuild.stat().st_mode | 0o200)
     kbuild.write_bytes(kbuild_patched)
     records.append(
-        "upstream/kernel/Kbuild CI_HOOK_DETECTOR_FIX "
+        "upstream/kernel/Kbuild SAMSUNG_COMPATIBILITY_SHIMS "
         f"BEFORE={sha256(kbuild_original)} AFTER={sha256(kbuild_patched)}"
     )
     legacy_nolibc_time.chmod(legacy_nolibc_time.stat().st_mode | 0o200)
@@ -292,8 +315,8 @@ def integrate(source: Path, upstream: Path, manifest: Path) -> None:
     )
     link.symlink_to(link_target.resolve(), target_is_directory=True)
     records.append(f"drivers/kernelsu SYMLINK={os.readlink(link)}")
-    records.append("HOOKS=execve,execveat,compat_execve,compat_execveat,faccessat,read,newfstatat")
-    records.append("NO_OBSOLETE_REBOOT_HOOK=upstream_missing")
+    records.append("HOOKS=execve,execveat,compat_execve,compat_execveat,faccessat,read,newfstatat,reboot")
+    records.append("UPSTREAM_REBOOT_HOOK_DETECTOR=UNCHANGED")
     manifest.write_text("\n".join(records) + "\n")
 
 

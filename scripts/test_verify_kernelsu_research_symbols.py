@@ -38,10 +38,19 @@ class KernelSUResearchSymbolAuditTests(unittest.TestCase):
 
     def test_reject_missing_hook(self):
         result = self.check(REQUIRED_CONFIG, [
-            f"ffff000000001000 T {name}" for name in REQUIRED_HOOK_SYMBOLS[:-1]
+            f"ffff000000001000 T {name}" for name in REQUIRED_HOOK_SYMBOLS
+            if name != "ksu_handle_sys_read"
         ] + self.PREINIT)
         self.assertFalse(result["KSU_MANUAL_HOOKS_LINKED"])
         self.assertIn("ksu_handle_sys_read", result["MISSING_OR_NON_TEXT_HOOK_SYMBOLS"])
+
+    def test_reject_missing_reboot_with_all_other_hooks_present(self):
+        result = self.check(REQUIRED_CONFIG, [
+            f"ffff000000001000 T {name}" for name in REQUIRED_HOOK_SYMBOLS
+            if name != "ksu_handle_sys_reboot"
+        ] + self.PREINIT)
+        self.assertFalse(result["KSU_MANUAL_HOOKS_LINKED"])
+        self.assertEqual(result["MISSING_OR_NON_TEXT_HOOK_SYMBOLS"], ["ksu_handle_sys_reboot"])
 
     def test_reject_nontext_symbol(self):
         result = self.check(REQUIRED_CONFIG, [

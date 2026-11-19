@@ -1,11 +1,13 @@
 """Small, stock-binary-free tests for the guarded CYE1 boot packager."""
 import struct
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace
 
 from package_cye1_baseline_odintar import (
     aligned, boot_v2_layout, parse_avb_info, replace_kernel_arg,
-    stock_metadata, verify_ksu_inputs,
+    stock_metadata, verify_ksu_inputs, verify_ksu_hook_manifest,
+    KNOWN_FAILED_KSU_IMAGE_SHA256,
 )
 
 
@@ -57,6 +59,25 @@ Algorithm:                SHA256_RSA4096
                                ksu_provenance=None, ksu_hooks_manifest=None)
         with self.assertRaisesRegex(ValueError, "KernelSU mode requires"):
             verify_ksu_inputs(args, b"KernelSU")
+
+    def test_rejects_known_failed_ksu_image_before_reading_other_inputs(self):
+        with patch("package_cye1_baseline_odintar.sha256", return_value=KNOWN_FAILED_KSU_IMAGE_SHA256):
+            with self.assertRaisesRegex(ValueError, "Known failed on-device"):
+                verify_ksu_inputs(SimpleNamespace(), b"fixture")
+
+    def test_five_hook_manifest_requires_reboot_and_unmodified_detector(self):
+        manifest = (
+            "KPROBES_REMAIN_DISABLED=YES\n"
+            "HOOKS=execve,execveat,compat_execve,compat_execveat,faccessat,read,newfstatat,reboot\n"
+            "UPSTREAM_REBOOT_HOOK_DETECTOR=UNCHANGED\n"
+        )
+        verify_ksu_hook_manifest(manifest)
+        with self.assertRaisesRegex(ValueError, "provenance missing"):
+            verify_ksu_hook_manifest(manifest.replace(",reboot", ""))
+        with self.assertRaisesRegex(ValueError, "provenance missing"):
+            verify_ksu_hook_manifest(manifest.replace("=UNCHANGED", "=REPLACED"))
+        with self.assertRaisesRegex(ValueError, "incorrectly claims reboot"):
+            verify_ksu_hook_manifest(manifest + "NO_OBSOLETE_REBOOT_HOOK=upstream_missing\n")
 
 
 if __name__ == "__main__":
