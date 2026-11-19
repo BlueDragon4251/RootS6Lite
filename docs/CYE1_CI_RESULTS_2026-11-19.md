@@ -119,3 +119,43 @@ The unchanged source discrepancy is significant: AOSP Clang **10.0.1** is pinned
    testing must follow a successful baseline test.
 
 **No experimental artifact is approved for flashing.**
+
+## Later follow-up — current branch baseline, stock trust, controls (2026-11-19)
+
+The branch advanced through `a7532d4` (CYE1 stock release string and
+imported stock **public** module certificate), `9fa3d85` (guarded *local*
+non-KSU experimental boot packager and offline tests), and `28cbda0`
+(documented experimental package hashes). The audits below inspected the
+**actual downloaded ZIP archives**, not merely green workflow badges. This
+section supersedes the earlier open points on *generated IKCONFIG* and
+*baseline module vermagic*, but not the open device/module-trust issues.
+
+| Verification | Observed result |
+| --- | --- |
+| [New CYE1 baseline run 44507834398](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44507834398), [artifact 14524431159](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44507834398/artifacts/14524431159) | **Success**; downloaded ZIP SHA256 `d0c2c08e4335000f4788607bfc42d6d3050084e42d96d167f9933358ceb5070b`. This is the new non-KSU CYE1 source experiment, not an OEM-binary reproduction. |
+| New CYE1 exported-symbol ABI | Actual artifact `Module.symvers` SHA256 `2c8e251d7c1c4c6f617f4f68808f355db3fc90b1126ffc24cd73c734eccb497e`; 12,530 **unique vmlinux** exports. Artifact's fully reconstructed reference comparison: **12,530/12,530** exact name/CRC/class, zero missing, extra, CRC or class mismatches. This remains a **derived** stock reference, not a direct complete OEM `Module.symvers` capture. |
+| Stock `IKCONFIG` and effective build configuration | The `stock-generated.config` SHA256 is `1bb058a8ea9cd72287e2f33fad7745bcc9733c453fbfec7c312352d8cc728208`, now pinned as the authentic CYE1 IKCONFIG. Independently diffed artifact configs: exactly **one string setting** changes, from `CONFIG_SYSTEM_TRUSTED_KEYS=""` to `"certs/roots6lite-p613-cye1-oem-public.pem"`. Effective config SHA256 `a0370e63486576da637d933966c32e4a271e471cc0b1fa6fc7bb1604c2488a96`. |
+| Original public module certificate | Inspected the compiled Image bytes: OEM-public X.509 DER SHA256 `ff40a362febb34f98dd1f23a41e8ab4cc9ffbcba9152eee68ee2fbbf007d03b1` is **embedded once**. A certificate's presence does **not** verify that the original firmware's vendor `.ko` files are signed by that key, that the device trusts it, or that all module imports resolve. |
+| Kernel and module release | CI reports `4.14.190-perf-28683246-abP613XXS8CYE1`. Independently inspected all 10 signed research module ELF payloads: their `vermagic` contains this exact stock-release prefix. This fixes the previous *release-string mismatch* in the new CYE1 **baseline only**. |
+| Research-module PKCS#7 integrity | **10/10** staged CYE1 `.ko` signatures cryptographically verified offline using their artifact's ephemeral CI signer with `openssl cms -verify -binary -noverify`. This is **not** stock OEM-module signature verification and does not weaken signature checking. |
+| Image / board-tree binaries | New baseline Image SHA256 `5609cb6faa2a6f07f4a0d0a2205f0d06fe696697cb6efc456d05a6b24d57d600` (48,828,432 bytes); still differs from authenticated stock Image (48,832,528 bytes). DTB SHA256 `e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816` and DTBO SHA256 `aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12` still match the authenticated stock binaries. Standard libfdt overlay application still fails `FDT_ERR_BADOVERLAY`; Android libufdt path remains untested. |
+| [New CWL1 KernelSU Legacy control 44507834525](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44507834525), [artifact 14523566161](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44507834525/artifacts/14523566161) | **Success**. Downloaded archive SHA256 `cc10f3b631f58635a60f03a96a9e102fe67e3f9f2b7522ba9f47ab02a2629526`; actual `System.map` independently confirms all seven expected KSU/manual-hook/preinit text symbols. Embedded AArch64 ELF 17,280 bytes; SHA256 `69d4aef4711bbb5517ff28a144ef45f34d645817546602344ee84722d8a6b187`; 10/10 ephemeral CI-module PKCS#7 signatures verified. **This workflow remains CWL1**, and its release is only `4.14.190-perf`, so it cannot establish CYE1 stock compatibility. |
+| [Official CYE1 + KSU research run 44502580820](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44502580820), [artifact 14518778090](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44502580820/artifacts/14518778090) | Previously completed green at pinned Legacy `e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a`. Its actual artifact was downloaded again; `12,530/12,530` reconstructed export parity, all seven linked KSU symbols, exact embedded AArch64 preinit ELF SHA256 above and **10/10** CI research module signatures were independently rechecked. **This earlier KSU build predates the current baseline-only OEM-public-cert/release modifications**. |
+| [New source compatibility audit 44512103461](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44512103461), [artifact 14524372048](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44512103461/artifacts/14524372048) | Audit workflow **success**, but the audited external community source `gta4xlve-dev/android_kernel_samsung_gta4xlve@ef3c0a5` reports `4.14.357-openela`, **not** the actual stock `4.14.190`; it is not validated as a drop-in CYE1 OEM source. |
+
+Additional independent artifact checks: `gsi_write_channel_scratch`
+still has CRC `0x00000000` in the actual CYE1 `Module.symvers`.
+The verifier and compatibility workflows on the branch head also passed;
+their green status does not establish physical-device compatibility.
+There was no newly observed CI failure requiring source modification.
+
+**Still blocking flash approval:** no actual boot/bootloader result for this
+modified kernel; **no original stock/vendor module set independently checked
+for trusted signer, imported symbols and runtime loading**; compiler is AOSP
+Clang 10.0.1 rather than OEM 10.0.7; Samsung-specific DTBO loading remains
+untested; the OEM signature/AVB boot acceptance is not established.
+A separate local experimental TAR is documented in
+[`CYE1_BASELINE_BOOT_TEST.md`](CYE1_BASELINE_BOOT_TEST.md), but no flash
+package was generated, attached or deployed by this research follow-up.
+**FLASH_ALLOWED=NO; no merge to `main`, no CYE1-KernelSU push without the
+explicit `[cye1-kernelsu]` commit marker.**
