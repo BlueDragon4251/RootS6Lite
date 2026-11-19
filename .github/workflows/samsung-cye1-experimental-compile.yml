@@ -34,7 +34,11 @@ jobs:
     timeout-minutes: 150
     env:
       GH_TOKEN: ${{ github.token }}
-      CYE1_MODE: ${{ inputs.mode || 'baseline' }}
+      # This workflow is deliberately not on main yet, so GitHub's UI does
+      # not expose workflow_dispatch. An explicit commit-message marker on
+      # the research branch allows a one-off KSU push-run without making
+      # every baseline build root-enabled or duplicating the workflow.
+      CYE1_MODE: ${{ inputs.mode || (contains(github.event.head_commit.message, '[cye1-kernelsu]') && 'kernelsu' || 'baseline') }}
     steps:
       - uses: actions/checkout@v4
 

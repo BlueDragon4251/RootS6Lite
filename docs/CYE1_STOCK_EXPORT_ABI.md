@@ -140,6 +140,17 @@ complete stock `Module.symvers`, not proof that all kernel semantics match,
 and does not validate OEM module signing, vermagic, bootability or root.
 All flash gates remain closed regardless of CRC parity.
 
+### Opt-in CYE1 KernelSU build trigger
+
+Until this workflow is registered on the repository default branch,
+GitHub does not show its `workflow_dispatch` button in the Actions UI.
+Only on the isolated `agent/kernel-foundation` research branch, a push commit
+whose **own message** includes `[cye1-kernelsu]` selects the `kernelsu`
+research mode. Other pushes continue to compile the non-rooted baseline.
+This reuses the same CYE1 workflow, pins the upstream KernelSU Next revision,
+and does not create Odin packages. It must be used only after a real
+CYE1 baseline build and the reconstructed export comparison have succeeded.
+
 
 1. **Prioritize a matching 2025 Samsung CYE1 source release** and investigate
    security-sensitive USB-restriction, cable/OTG and battery code differences.
