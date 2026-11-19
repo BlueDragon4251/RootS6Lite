@@ -1,4 +1,114 @@
-# Experimental CYE1 + KernelSU Next boot image — 2026-11-19
+# Experimental CYE1 + KernelSU Next boot images — 2026-11-19
+
+## Current separate candidate: KSU5 / trace — static checks passed, device untested
+
+The owner explicitly requested a new private Odin test package while unable to
+run PC/device commands. The result is a **new experimental boot/diagnostic
+candidate**, not a claim that KernelSU now boots or that the earlier failure's
+root cause is fixed. The previously failed image below remains rejected.
+
+### Reverified provenance and source integration
+
+- Kernel build [44605802348](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44605802348),
+  source commit `c380056b7f6e4f530ab96c034d8395558fdffb3b`: GitHub confirmed
+  `completed/success`, including linked ELF call-edge and trace checks.
+- Artifact `14571571487`, ZIP SHA256
+  `9dbb8c2e077ff8dd898dd5284e7d31567c9c3ad6af4bfc940d48643ea5fc5ddd`:
+  downloaded bytes match GitHub's digest; ZIP integrity checked again.
+- KernelSU Next legacy remains pinned to
+  `e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a`. Source insertion, Kbuild/Kconfig
+  wiring and the complete non-GKI guide were rechecked. The read-hook ABI is
+  taken from this revision, not copied blindly from a different guide version.
+- Raw ARM64 Image instructions independently prove ten distinct caller-to-hook
+  BL edges: six native/compat exec callers plus faccessat, newfstatat, read and
+  reboot. The reboot hook is before the original capability check; that check
+  remains present. All 42 diagnostic marker strings are present.
+- `CONFIG_KSU=y`, manual hooks enabled, `KPROBES=n`, `KSU_DEBUG=n`.
+  Embedded IKCONFIG equals the audited final config. Stock signing, MODVERSIONS,
+  SELinux and Samsung RKP/KDP/FIVE/PROCA configuration are retained.
+
+### Packaging gate changes and CI
+
+Packager commit `e13e0767a693c36ee9851269dfb9a6a101982610` adds mandatory
+raw-Image BL decoding, the existing complete trace/config validator, and clean
+pinned-tool-worktree checks. Missing/offset/wrong reboot calls, aliases, B
+instead of BL, duplicate calls, reduced traces and dirty tool sources fail.
+The new `--ksu-trace-manifest` input is required for this diagnostic profile.
+
+153/153 local tests passed, including 24 package tests (16 new). GitHub also
+confirmed these post-change runs `completed/success`:
+
+- [44620296024](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44620296024):
+  pushed-branch Samsung source verifier self-test, including guarded packager.
+- [44620312363](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44620312363):
+  pull-request self-test.
+- [44620296012](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44620296012):
+  source compatibility audit.
+
+No kernel source changed during this packaging pass; the Image is exactly the
+successful kernel-run artifact above, not an unverified new rebuild.
+
+### Independent binary and package results
+
+- 12,530/12,530 reconstructed export names/CRCs/classes match, including all
+  21 previously missing OEM exports. The 46 CYE1 delta entries were rederived
+  from the original Image plus authenticated control. Actual Image export CRC
+  arrays and names agree with Module.symvers using the linked System.map.
+- Module.symvers is byte-identical to the physically booted baseline:
+  `2c8e251d7c1c4c6f617f4f68808f355db3fc90b1126ffc24cd73c734eccb497e`.
+- The OEM public certificate is byte-identical to the stock Image certificate
+  and inside the compiled trust list. All ten CI research-module signatures
+  were independently verified, with exact stock vermagic. This is not a
+  runtime stock-module loading test.
+- Original boot no-op repack is byte-exact. The new TAR was generated twice;
+  both complete TARs and both reports are byte-identical.
+- An independent parser then checked the actual final TAR rather than trusting
+  its report: one regular `boot.img`, 100,663,296 bytes, header v2, 4096-byte pages,
+  correct SHA1 image ID, exact new gzip kernel, original 725,007-byte ramdisk,
+  **complete 442,884-byte DTB region including the additional 173-byte FDT**,
+  original commandline and 528-byte Samsung trailer.
+- AVB footer/descriptor offsets, salt-plus-image SHA256, sizes and padding were
+  independently recalculated. Algorithm is **NONE / unsigned**, not Samsung
+  authentication. No `force_feature` or `allow_shell` override is added.
+- The rollback TAR is byte-for-byte identical to the previously flashed,
+  successfully booted non-KSU baseline, not a newly rebuilt substitute.
+
+| Identity | SHA256 |
+| --- | --- |
+| New `RootS6Lite_SM-P613_CYE1_KSU5_TRACE_EXPERIMENTAL.tar` (100,669,440 bytes) | `f1437f3471a9ca0017261dfd5917992a7ddc77b07a38fc64ec00774777aa5000` |
+| New inner `boot.img` | `1785fbfcce0f9a38f7869b23a7a4fda12c61eff077d142aa3d1c3c4828f26a1b` |
+| New uncompressed Image | `83f2e337b2563b4e0414ec4d59e374f6d345e199b17df43487ebf44cbe986c11` |
+| `RootS6Lite_SM-P613_CYE1_BASELINE_ROLLBACK.tar` (100,669,440 bytes) | `e98e22019d02e2a21e9f14db8be4466e7e5ab97c7924e49d40a64e380e2a98b3` |
+| Rollback inner `boot.img` | `640da30f79fea0deb45bdcdb7e75841a285eb4af55dea149f0f6e8be070e2061` |
+| Rollback uncompressed Image | `5609cb6faa2a6f07f4a0d0a2205f0d06fe696697cb6efc456d05a6b24d57d600` |
+
+### Remaining constraints and owner test scope
+
+Physical boot, preinit execution, manager handshake, root authorization and
+original Samsung module loading remain **NOT TESTED** for the new Image. The
+reference is reconstructed, not an original OEM Module.symvers. Clang 10.0.1
+is not proven equivalent to OEM Clang 10.0.7. Standard libfdt still reports
+`FDT_ERR_BADOVERLAY`; the package retains the original complete DTB and does
+not flash a DTBO partition. No CRC or safety check was overridden to claim a pass.
+
+The pinned optional **SULOG** path has a separate argv/logging defect; its
+feature defaults to disabled and the stock commandline supplies no override.
+Do not enable SULOG or other experimental features/modules in this boot-only
+test. This is a later root-functionality blocker, not established evidence for
+the earlier early-boot failure.
+
+The private handoff includes the new TAR, unchanged baseline rollback, SHA256
+list, JSON validation report and German Odin instructions. AP only; BL/CP/CSC/PIT
+empty; Re-Partition/Nand Erase off; no extra vbmeta or bootloader relocking.
+Matching full stock firmware remains the fallback. Keep the magnetic cover
+away during the test. A failed boot does not justify an immediate factory reset.
+
+Upstream research manifests deliberately retain `FLASH_ALLOWED=NO`; they do
+not certify runtime readiness. The explicitly requested local reconstruction
+is labelled `UNVERIFIED_EXPERIMENTAL_ONLY`, not a flash-ready release. No OEM
+boot binaries, private keys or device logs are committed to this public repo.
+
+## Rejected previous image and incident history
 
 **For SM-P613 P613XXS8CYE1 only. The KSU test image has now been physically tested and FAILED TO BOOT (bootloop). DO NOT FLASH OR REDISTRIBUTE THIS TEST IMAGE.**
 No actual KernelSU privileges, stock module import, or manager interoperability
