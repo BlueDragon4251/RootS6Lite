@@ -15,6 +15,8 @@ on:
       - 'scripts/reconstruct_cye1_export_reference.py'
       - 'scripts/test_full_cye1_export_abi.py'
       - 'scripts/integrate_kernelsu_next_research.py'
+      - 'scripts/verify_kernelsu_call_edges.py'
+      - 'scripts/test_verify_kernelsu_call_edges.py'
       - 'docs/CYE1_STOCK_EXPORT_ABI.json'
       - 'docs/CYE1_RECONSTRUCTED_STOCK_EXPORTS.tsv'
   workflow_dispatch:
@@ -60,6 +62,7 @@ jobs:
           python3 -m unittest discover -s scripts -p 'test_compare_compiled_cye1_abi.py' -v
           python3 -m unittest discover -s scripts -p 'test_full_cye1_export_abi.py' -v
           python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_research_symbols.py' -v
+          python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_call_edges.py' -v
           python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_preinit_elf.py' -v
 
       - name: Download and verify Samsung official 2025 base and exact CYE1 supplement
@@ -186,6 +189,17 @@ jobs:
             --image _out/arch/arm64/boot/Image \
             --system-map _out/System.map \
             --report _evidence/ksu-preinit-elf-layout.json
+          echo 'FLASH_ALLOWED=NO'
+
+      - name: Verify actual linked ARM64 BL instructions into manual KSU hooks (research only)
+        if: env.CYE1_MODE == 'kernelsu'
+        run: |
+          set -euo pipefail
+          aarch64-linux-gnu-objdump --version | head -n 1
+          python3 scripts/verify_kernelsu_call_edges.py \
+            --objdump "$(command -v aarch64-linux-gnu-objdump)" \
+            --vmlinux _out/vmlinux \
+            --report _evidence/ksu-linked-call-edges.json | tee _evidence/ksu-linked-call-edges-summary.txt
           echo 'FLASH_ALLOWED=NO'
 
       - name: Upload isolated NONFLASHABLE build evidence (no Odin package or private key)
