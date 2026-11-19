@@ -4,6 +4,7 @@
   "OEM_MODULE_LOADING": "NOT_TESTED",
   "RESEARCH_CONTROL": "PINNED_AOSP_CLANG10_SAMSUNG_OSRC_CWL1",
   "SOURCE": "AUTHENTICATED_CYE1_RAW_ARM64_IMAGE",
+  "reconstructed_stock_exports_sha256": "83dae0a19244e554edf0b98da7cd9fd59bcfe25ed5b618f5c3d2942ee123b7ce",
   "changed_named_export_crcs": [
     {
       "group": "normal",

@@ -10,8 +10,12 @@ on:
       - 'scripts/compile_samsung_baseline.sh'
       - 'scripts/compare_compiled_cye1_abi.py'
       - 'scripts/test_compare_compiled_cye1_abi.py'
+      - 'scripts/compare_full_cye1_export_abi.py'
+      - 'scripts/reconstruct_cye1_export_reference.py'
+      - 'scripts/test_full_cye1_export_abi.py'
       - 'scripts/integrate_kernelsu_next_research.py'
       - 'docs/CYE1_STOCK_EXPORT_ABI.json'
+      - 'docs/CYE1_RECONSTRUCTED_STOCK_EXPORTS.tsv'
   workflow_dispatch:
     inputs:
       mode:
@@ -49,6 +53,7 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s scripts -p 'test_extract_samsung_cye1_source.py' -v
           python3 -m unittest discover -s scripts -p 'test_compare_compiled_cye1_abi.py' -v
+          python3 -m unittest discover -s scripts -p 'test_full_cye1_export_abi.py' -v
           python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_research_symbols.py' -v
           python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_preinit_elf.py' -v
 
@@ -133,6 +138,17 @@ jobs:
             --report _evidence/cye1-compiled-vs-stock-abi.json | tee _evidence/cye1-crc-summary.txt
           echo '=== CYE1 CRC parity (partial reference only, NEVER flash approval) ===' >> "$GITHUB_STEP_SUMMARY"
           cat _evidence/cye1-crc-summary.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compare ALL compiled exports against reconstructed CYE1 stock reference
+        run: |
+          set -euo pipefail
+          python3 scripts/compare_full_cye1_export_abi.py \
+            --manifest docs/CYE1_STOCK_EXPORT_ABI.json \
+            --reference docs/CYE1_RECONSTRUCTED_STOCK_EXPORTS.tsv \
+            --symvers _out/Module.symvers \
+            --report _evidence/cye1-full-reconstructed-export-abi.json | tee _evidence/cye1-full-export-summary.txt
+          echo '=== Full reconstructed export inventory (derived; NOT full module ABI) ===' >> "$GITHUB_STEP_SUMMARY"
+          cat _evidence/cye1-full-export-summary.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check linked KSU preinit ELF when optional research mode is selected
         if: env.CYE1_MODE == 'kernelsu'

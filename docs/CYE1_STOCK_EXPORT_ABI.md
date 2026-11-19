@@ -120,6 +120,27 @@ mismatches**; they must not be dismissed merely because no `.ko` was found.
 
 ## Next gates
 
+### Full reconstructed export comparison
+
+The pinned CWL1/AOSP Clang10 control artifact from run `43407157828`
+contains a SHA256-authenticated `Module.symvers` for all 12,509 built-in
+exports. Combining that inventory with the 25 changed CRCs and 21 added
+exports recovered from the authentic CYE1 Image produces a reproducible,
+**derived 12,530-export reference**:
+[`CYE1_RECONSTRUCTED_STOCK_EXPORTS.tsv`](CYE1_RECONSTRUCTED_STOCK_EXPORTS.tsv).
+The file's SHA256 is pinned in `CYE1_STOCK_EXPORT_ABI.json`. To independently
+regenerate it, download run `43407157828`'s artifact, extract
+`_out/Module.symvers` and execute `scripts/reconstruct_cye1_export_reference.py`.
+
+The CYE1 research workflow now checks **every** compiled built-in symbol
+name, CRC and export class against this derived reference, and produces a
+machine-readable mismatch inventory. This is stronger than the old 46-export
+spot check, which is retained for continuity. It is still *not* a direct
+complete stock `Module.symvers`, not proof that all kernel semantics match,
+and does not validate OEM module signing, vermagic, bootability or root.
+All flash gates remain closed regardless of CRC parity.
+
+
 1. **Prioritize a matching 2025 Samsung CYE1 source release** and investigate
    security-sensitive USB-restriction, cable/OTG and battery code differences.
    Community kernel forks may be research references, not substitutes for
