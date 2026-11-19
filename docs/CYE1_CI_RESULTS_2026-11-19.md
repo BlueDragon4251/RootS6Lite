@@ -231,4 +231,57 @@ Downloaded artifact **14571571487**, `SM-P613-CYE1-kernelsu-AOSP10-RESEARCH-NOT-
 
 All three existing control compiles also finished **SUCCESS** on `c380056b7f6e4f530ab96c034d8395558fdffb3b`: [AOSP Clang 10 baseline 44605802283](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44605802283), [Clang 14 baseline 44605802289](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44605802289), and [legacy KernelSU manual-hook control 44605802246](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44605802246). These are the older-source controls, **not substitutes for the CYE1 artifact or device boot evidence**. Source self-tests `44605802338` / `44605822314` and source compatibility audit `44605802384` also passed. Report-only commit `3fd38fc7e9a11c2d01bd9224174f9c5ab02b71e4` was subsequently checked by successful self-test `44609973386` and source audit `44609959777`.
 
+## 2026-11-19 — uploaded retained-last-kmsg audit
 
+The owner supplied a private `RootS6Lite-last-kmsg.txt` export from the requested
+Android DropBox tag. The received file is **68,034 bytes / 1,481 lines**, CRLF,
+SHA256 `37fbfba595d945d531f31d54f4dc2c6736a9fa8a9c955f1835f4ab6213384ca1`.
+The raw log and device identifiers are **not** committed to this public repository.
+
+**This export does not provide the failed KernelSU boot's Linux crash trace.**
+Its retained body contains Qualcomm/Samsung XBL/ABL output and ends at the
+completion of UEFI boot services. The archive explicitly begins with
+`[[TRUNCATED]]`, already partway through display initialization. The earlier
+private Android logcat independently recorded BootReceiver copying the **last
+65,536 bytes** of `/proc/last_kmsg` into this entry. Absence of a Linux panic in
+this truncated fragment does not establish that Linux never ran, or that no
+earlier crash record exists.
+
+| Received-file lines | Observed evidence | Inference boundary |
+| --- | --- | --- |
+| 9, 15, 17 | Previous-header flag, shared research-kernel banner, truncation marker | Neither the header nor the common release string identifies the exact baseline/KSU Image. |
+| 1000–1004, 1034 | VBMeta verification mismatch, verification-disabled flag; unlocked state explicitly continues boot | The recorded AVB error is **not a fatal stop in this sequence**. |
+| 1124, 1188 | Samsung authentication fails **but allows** VBMeta and the boot kernel | Do not diagnose a signature-blocked boot or disable more verification from these messages. |
+| 1254 | DTBO authentication succeeds | This authenticates the DTBO in this bootloader path, not full Linux/runtime compatibility. |
+| 1318, 1322, 1392 | Kernel decompression, overlay application, then device-tree update complete | These stages continue; the missing optional user-DTBO/splash-node messages are not demonstrated fatal causes. |
+| 1458, 1476 | UEFI boot services shut down; final UEFI-end record | The retained sequence reaches this handoff stage; successful Linux execution afterwards is not shown. |
+| 1480 | Footer reports a user-requested reboot | Not an explicit panic reason, and not sufficient to associate this archive with the failed KSU test. |
+
+No Linux panic/Oops/call-trace or KernelSU phase message was found in the
+received fragment. The watchdog references concern the SM5714 charge
+controller configuration in XBL, not an observed Linux watchdog crash.
+The OEM PON/reset-history codes were not guessed or decoded without a source.
+
+Header provenance matters:
+[AOSP Android 14 BootReceiver](https://github.com/aosp-mirror/platform_frameworks_base/blob/android14-release/services/core/java/com/android/server/BootReceiver.java)
+uses a cached earlier header for `isPrevious: true`, updates the cache when
+logging boot events, and appends the boot-reason property separately. Samsung
+customizes this framework, so this upstream behavior is a provenance caution,
+not proof of the exact Samsung implementation. In particular, a failed early
+boot need not have refreshed that cache. Both research payloads also share
+the same reproducible version banner. None of these fields authenticates
+the exact Image responsible for the retained body.
+
+**Next evidence, read-only:** try a complete rootless read of
+`/proc/last_kmsg`, and export `dumpsys dropbox` **without** `--print` to
+inventory the 26 reported retained entries. Then request only actually present,
+relevant last-kmsg/recovery/crash tags. If the full proc read is denied, keep
+that error and use the permitted DropBox inventory; do not bypass device
+permissions. No factory reset, protection changes, or new flash is justified
+by this log.
+
+The five-hook repair and tracing artifact from run `44605802348` remains
+successfully compiled and statically checked, but **untested on-device**.
+This upload neither validates that repaired payload nor proves the earlier
+bootloop's cause. No new Odin TAR or kernel change was made for this finding.
+**FLASH_ALLOWED=NO for KernelSU; bootloop cause unresolved.**
