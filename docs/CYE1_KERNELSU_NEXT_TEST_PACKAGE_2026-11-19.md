@@ -1,8 +1,8 @@
 # Experimental CYE1 + KernelSU Next boot image — 2026-11-19
 
-**For SM-P613 P613XXS8CYE1 only. This is NOT a boot-tested or root-tested
-KernelSU image.** No actual KernelSU privileges, stock module import, or
-manager interoperability have yet been confirmed on-device.
+**For SM-P613 P613XXS8CYE1 only. The KSU test image has now been physically tested and FAILED TO BOOT (bootloop). DO NOT FLASH OR REDISTRIBUTE THIS TEST IMAGE.**
+No actual KernelSU privileges, stock module import, or manager interoperability
+have been confirmed on-device.
 
 ## Established evidence
 
@@ -72,3 +72,33 @@ firmware before any KSU physical experiment. A failed boot may require
 Download Mode and a full stock reflash and may risk data loss.
 
 Do not publish OEM boot images or private keys in the public repository.
+
+## Physical-device incident — 2026-11-19
+
+The device owner reported **`bootloop`** immediately after flashing the
+experimental KernelSU Next package above. The previously installed CYE1
+non-KSU baseline had successfully booted Android 14 on the same device.
+This rules out a blanket assertion of physical bootability from green CI,
+matching Module.symvers, ELF hook symbols, or successful packaging.
+
+- **Known-failing inner boot.img** SHA256:
+  `d3a7a5dae7d4137e1bb54930a5ef5efb655e57cd6ca2a453d56cc3d2aa3cdce7`.
+- **Known-failing Odin TAR** SHA256:
+  `e3b1fe96470973ea99a603d657700d039a20fc8aa4b1a79cc876bbf276dd0626`.
+- Failure phase (Samsung splash vs boot animation), restart cycle, kernel
+  panic/pstore, and recovery outcome are **not yet reported**. Do not assert
+  a proven root cause.
+- Recommended immediate recovery: reflash the previously booted CYE1 baseline
+  Odin AP package, or exact matching original Samsung CYE1 firmware, using
+  Download Mode. Do not factory-reset as a substitute for restoring `boot`.
+- The running kernel's `CONFIG_KPROBES=n` excludes a broken Kprobe explanation
+  for this manual-hook build. Samsung `CONFIG_UH_RKP=y`, `CONFIG_RKP_KDP=y`,
+  `CONFIG_FIVE=y`, and `CONFIG_PROCA=y` make KSU credential and SELinux
+  interactions legitimate suspects, **not findings**.
+- **Stop condition:** No repeat flash of this identical binary. Next test
+  must be a separate, specifically instrumented/changed build with source
+  diff, exact ABI parity verification and safe rollback. Seek post-crash
+  `/sys/fs/pstore` or previous-boot diagnostics if accessible after recovery.
+
+Record physical boot outcome as **FAILED**, while CI build/ABI audit stays
+**PASSED**; these results measure different things.
