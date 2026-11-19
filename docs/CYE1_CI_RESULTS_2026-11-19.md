@@ -227,4 +227,8 @@ Downloaded artifact **14571571487**, `SM-P613-CYE1-kernelsu-AOSP10-RESEARCH-NOT-
 
 **Device gate:** no new flash was performed, no new Odin TAR was produced, and neither a bootloop repair nor root is claimed. The earlier private baseline logcat contains BootReceiver records archiving last-kmsg into Android's local DropBox service. A targeted read-only `dumpsys dropbox --print <exact recorded tag>` export was requested from the owner; its content/availability and whether it belongs to the failed KSU boot are not yet known. Raw device logs are not published in this repository. **FLASH_ALLOWED=NO.**
 
+### Regression controls on the same code commit
+
+All three existing control compiles also finished **SUCCESS** on `c380056b7f6e4f530ab96c034d8395558fdffb3b`: [AOSP Clang 10 baseline 44605802283](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44605802283), [Clang 14 baseline 44605802289](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44605802289), and [legacy KernelSU manual-hook control 44605802246](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44605802246). These are the older-source controls, **not substitutes for the CYE1 artifact or device boot evidence**. Source self-tests `44605802338` / `44605822314` and source compatibility audit `44605802384` also passed. Report-only commit `3fd38fc7e9a11c2d01bd9224174f9c5ab02b71e4` was subsequently checked by successful self-test `44609973386` and source audit `44609959777`.
+
 
