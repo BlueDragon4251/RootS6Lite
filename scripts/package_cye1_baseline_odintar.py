@@ -2,7 +2,9 @@
 """Local, opt-in SM-P613 CYE1 boot experiment packager; never runs in CI.
 
 Requires the user's SHA256-pinned stock boot.img and a independently inspected,
-CI-built, non-KernelSU Image. Keeps the original ramdisk/DTB and Samsung
+CI-built Image. The default baseline mode rejects KernelSU; the explicit
+KernelSU mode requires a linked-symbol/ELF audit and pinned KSU provenance.
+Keeps the original ramdisk/DTB and Samsung
 SignerVer02 trailer. Replaces the OEM-signed AVB footer with a *self-consistent
 but UNSIGNED* hash footer; bootloader acceptance is NOT established.
 
@@ -23,6 +25,8 @@ import tempfile
 from pathlib import Path
 
 from compare_full_cye1_export_abi import compare as compare_exports
+from verify_kernelsu_research_symbols import audit as audit_ksu_symbols
+from verify_kernelsu_preinit_elf import inspect as inspect_ksu_elf
 
 
 STOCK_BOOT_SHA256 = "06888f51722264ef33f2299e6ccaefab9e6e0c7a96d51c5c8a74cfeecd265655"
@@ -35,6 +39,10 @@ AVBTOOL_COMMIT = "386fb90492db3bd6bc484a579bcde5b43a2a0292"
 PARTITION_SIZE = 100663296
 STOCK_DT_BYTES = 442884
 STOCK_RAMDISK_BYTES = 725007
+BOOTED_BASELINE_IMAGE_SHA256 = "5609cb6faa2a6f07f4a0d0a2205f0d06fe696697cb6efc456d05a6b24d57d600"
+STOCK_COMPATIBLE_SYMVERS_SHA256 = "2c8e251d7c1c4c6f617f4f68808f355db3fc90b1126ffc24cd73c734eccb497e"
+KSU_CONFIG_SHA256 = "d1261c855df36e575bf12219c6831955f75d76f4706659d9c9245f0dbaf86416"
+KSU_UPSTREAM_REVISION = "e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a"
 
 
 def sha256(data: bytes) -> str:
@@ -151,8 +159,50 @@ def tar_odin(boot: Path, output: Path) -> None:
             tar.addfile(info, source)
 
 
+def verify_ksu_inputs(args, image: bytes) -> dict:
+    required = ("ksu_config", "system_map", "baseline_image", "ksu_provenance", "ksu_hooks_manifest")
+    if any(getattr(args, field) is None for field in required):
+        raise ValueError("KernelSU mode requires config, System.map, booted baseline, upstream and hook manifests")
+    config = args.ksu_config.read_bytes()
+    if sha256(config) != KSU_CONFIG_SHA256:
+        raise ValueError("KernelSU effective config differs from CI-audited profile")
+    if image.count(b"KernelSU") == 0:
+        raise ValueError("KernelSU mode image lacks KernelSU identifiers")
+    if sha256(args.baseline_image.read_bytes()) != BOOTED_BASELINE_IMAGE_SHA256:
+        raise ValueError("Baseline comparison image differs from physically booted CYE1 Image")
+    provenance = args.ksu_provenance.read_text()
+    if f"KSU_UPSTREAM_LEGACY_COMMIT={KSU_UPSTREAM_REVISION}" not in provenance:
+        raise ValueError("KernelSU Next upstream revision is unverified")
+    hooks = args.ksu_hooks_manifest.read_text()
+    for line in (
+        "KPROBES_REMAIN_DISABLED=YES",
+        "HOOKS=execve,execveat,compat_execve,compat_execveat,faccessat,read,newfstatat",
+        "NO_OBSOLETE_REBOOT_HOOK=upstream_missing",
+    ):
+        if line not in hooks.splitlines():
+            raise ValueError(f"Manual KernelSU hook provenance missing: {line}")
+    symbols = audit_ksu_symbols(args.ksu_config, args.system_map)
+    if not all(symbols[k] for k in ("KSU_CONFIG_VALID", "KSU_MANUAL_HOOKS_LINKED", "KSU_PREINIT_EMBEDDED")):
+        raise ValueError("KernelSU configuration, linked hook or preinit symbol audit failed")
+    if symbols["KSU_PREINIT_BLOB_BYTES"] != 17280:
+        raise ValueError("KernelSU preinit runner size differs from audited pinned upstream")
+    elf = inspect_ksu_elf(image, args.system_map.read_text())
+    if not elf["KSU_PREINIT_ELF_LAYOUT_VALID"] or not elf["KSU_PREINIT_ELF_STATIC"]:
+        raise ValueError("Embedded KernelSU preinit ELF failed independent validation")
+    return {
+        "kernelsu_upstream_commit": KSU_UPSTREAM_REVISION,
+        "kernelsu_manual_hooks_linked": True,
+        "kernelsu_preinit_runner_bytes": elf["KSU_PREINIT_RUNNER_BYTES"],
+        "kernelsu_preinit_runner_sha256": elf["KSU_PREINIT_RUNNER_SHA256"],
+        "kernelsu_preinit_page_congruence": elf["PAGE_CONGRUENCE_VERIFIED"],
+        "booted_baseline_image_sha256": BOOTED_BASELINE_IMAGE_SHA256,
+        "ksu_config_sha256": sha256(config),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("baseline", "kernelsu"), default="baseline")
     parser.add_argument("--stock-boot", required=True, type=Path)
     parser.add_argument("--kernel-image", required=True, type=Path)
     parser.add_argument("--expected-kernel-sha256", required=True)
@@ -162,6 +212,11 @@ def main() -> None:
     parser.add_argument("--abi-manifest", required=True, type=Path)
     parser.add_argument("--abi-reference", required=True, type=Path)
     parser.add_argument("--stock-public-cert", required=True, type=Path)
+    parser.add_argument("--ksu-config", type=Path)
+    parser.add_argument("--system-map", type=Path)
+    parser.add_argument("--baseline-image", type=Path)
+    parser.add_argument("--ksu-provenance", type=Path)
+    parser.add_argument("--ksu-hooks-manifest", type=Path)
     parser.add_argument("--mkbootimg-directory", required=True, type=Path)
     parser.add_argument("--avbtool-directory", required=True, type=Path)
     parser.add_argument("--output-tar", required=True, type=Path)
@@ -182,7 +237,7 @@ def main() -> None:
         raise ValueError("Unexpected compiled ARM64 Image (size, PE header, or digest)")
     if STOCK_KERNELRELEASE.encode() not in image:
         raise ValueError("Kernel release string mismatches Samsung stock vermagic")
-    if b"KernelSU" in image:
+    if args.mode == "baseline" and b"KernelSU" in image:
         raise ValueError("Baseline Image unexpectedly contains KernelSU string")
     original_config = args.stock_ikconfig.read_bytes()
     if sha256(original_config) != STOCK_CONFIG_SHA256:
@@ -193,6 +248,7 @@ def main() -> None:
     )
     if expected_config == original_config or args.built_config.read_bytes() != expected_config:
         raise ValueError("Effective CYE1 Kconfig deviates from stock beyond public certificate addition")
+    ksu_details = verify_ksu_inputs(args, image) if args.mode == "kernelsu" else {}
     # OpenSSL emits binary DER; subprocess text mode would corrupt it.
     cert = subprocess.run(["openssl", "x509", "-in", str(args.stock_public_cert), "-outform", "DER"],
                           check=True, capture_output=True).stdout
@@ -202,12 +258,14 @@ def main() -> None:
                           args.abi_reference.read_bytes(), args.module_symvers.read_bytes())
     if abi["reconstructed_stock_export_parity"] != "YES" or abi["exact_export_name_crc_class_matches"] != 12530:
         raise ValueError("CYE1 full reconstructed export name/CRC/class mismatch")
+    if abi["compiled_symvers_sha256"] != STOCK_COMPATIBLE_SYMVERS_SHA256:
+        raise ValueError("Module.symvers changed relative to the physically booted CYE1 baseline")
     avb_info = run(sys.executable, str(avb), "info_image", "--image", str(args.stock_boot))
     original_size, salt = parse_avb_info(avb_info)
     stock_layout = boot_v2_layout(stock)
     tail = stock_metadata(stock, stock_layout, original_size)
 
-    with tempfile.TemporaryDirectory(prefix="roots6lite-baseline-") as temp_name:
+    with tempfile.TemporaryDirectory(prefix=f"roots6lite-{args.mode}-") as temp_name:
         temp = Path(temp_name)
         stock_parts = temp / "stock_parts"
         stock_parts.mkdir()
@@ -245,7 +303,7 @@ def main() -> None:
             if names != ["boot.img"] or archive.extractfile("boot.img").read() != data:
                 raise ValueError("Odin tar archive roundtrip failed")
         report = {
-            "model": "SM-P613", "firmware": "P613XXS8CYE1", "mode": "NONROOT_BASELINE_BOOT_EXPERIMENT",
+            "model": "SM-P613", "firmware": "P613XXS8CYE1", "mode": "KERNELSU_NEXT_EXPERIMENT" if args.mode == "kernelsu" else "NONROOT_BASELINE_BOOT_EXPERIMENT",
             "stock_boot_sha256": sha256(stock), "compiled_image_sha256": sha256(image),
             "compiled_image_bytes": len(image), "boot_image_sha256": sha256(data),
             "boot_image_bytes": len(data), "odin_tar_sha256": sha256(args.output_tar.read_bytes()),
@@ -258,8 +316,10 @@ def main() -> None:
             "full_reconstructed_export_matches": abi["exact_export_name_crc_class_matches"],
             "module_symvers_sha256": abi["compiled_symvers_sha256"],
             "stock_config_byte_parity_except_public_cert": True,
+            "final_kernel_has_kernelsu_kconfig_additions": args.mode == "kernelsu",
+            "root_on_device": "NOT_TESTED" if args.mode == "kernelsu" else "NOT_APPLICABLE",
             "recovery": "USER_MUST_HAVE_MATCHING_STOCK_ODIN_FIRMWARE_AND_DOWNLOAD_MODE",
-            "flash_readiness": "UNVERIFIED_EXPERIMENTAL_ONLY", **details,
+            "flash_readiness": "UNVERIFIED_EXPERIMENTAL_ONLY", **details, **ksu_details,
         }
         args.report.write_text(json.dumps(report, indent=2) + "\n")
         print(json.dumps(report, indent=2))

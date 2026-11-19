@@ -1,9 +1,11 @@
 """Small, stock-binary-free tests for the guarded CYE1 boot packager."""
 import struct
 import unittest
+from types import SimpleNamespace
 
 from package_cye1_baseline_odintar import (
-    aligned, boot_v2_layout, parse_avb_info, replace_kernel_arg, stock_metadata,
+    aligned, boot_v2_layout, parse_avb_info, replace_kernel_arg,
+    stock_metadata, verify_ksu_inputs,
 )
 
 
@@ -49,6 +51,12 @@ Algorithm:                SHA256_RSA4096
         self.assertEqual(len(salt), 64)
         with self.assertRaisesRegex(ValueError, "Unexpected stock AVB"):
             parse_avb_info(desc.replace("SHA256_RSA4096", "NONE"))
+
+    def test_ksu_mode_rejects_missing_provenance_inputs(self):
+        args = SimpleNamespace(ksu_config=None, system_map=None, baseline_image=None,
+                               ksu_provenance=None, ksu_hooks_manifest=None)
+        with self.assertRaisesRegex(ValueError, "KernelSU mode requires"):
+            verify_ksu_inputs(args, b"KernelSU")
 
 
 if __name__ == "__main__":
