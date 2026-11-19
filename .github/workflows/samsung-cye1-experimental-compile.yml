@@ -134,6 +134,29 @@ jobs:
           fi
           bash scripts/compile_samsung_baseline.sh "$PWD/_samsung/kernel" "$PWD/_out" "$PWD/_evidence"
 
+      - name: Verify linked stock kernel identity and OEM public certificate
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import subprocess
+          cert = Path("assets/p613-cye1-stock-module-signing-public.pem")
+          der = subprocess.run(
+              ["openssl", "x509", "-in", str(cert), "-outform", "DER"],
+              check=True, capture_output=True,
+          ).stdout
+          expected = "ff40a362febb34f98dd1f23a41e8ab4cc9ffbcba9152eee68ee2fbbf007d03b1"
+          assert hashlib.sha256(der).hexdigest() == expected, "Unexpected OEM public cert"
+          image = Path("_out/arch/arm64/boot/Image").read_bytes()
+          assert image.count(der) == 1, "OEM public module signer absent or duplicated in linked Image"
+          release = b"4.14.190-perf-28683246-abP613XXS8CYE1"
+          assert release in image, "Linked kernel lacks exact stock vermagic release"
+          report = "LINKED_STOCK_RELEASE=YES; LINKED_OEM_PUBLIC_SIGNER=YES; REAL_OEM_MODULE_IMPORTS=NOT_YET_TESTED; OEM_PUBLIC_CERT_DER_SHA256=" + expected
+          Path("_evidence/embedded-stock-trust-check.txt").write_text(report)
+          print(report)
+          PY
+
       - name: Compare compiled CYE1 exports with authenticated OEM CRC deltas
         run: |
           set -euo pipefail

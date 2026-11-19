@@ -130,3 +130,24 @@ camera/charging, stability, suspend/resume, and any KernelSU Next/root
 behavior. No KernelSU was included in the baseline TAR. The owner was asked
 to run the remaining ADB commands as one quoted `adb shell` invocation
 because multiple pasted Windows CMD lines did not execute as intended.
+
+### Live security-state confirmation (same boot, 2026-11-19)
+
+The owner subsequently ran one quoted ADB command to avoid Windows CMD
+newline paste problems:
+
+```text
+adb shell "getenforce; getprop ro.boot.verifiedbootstate; getprop ro.boot.flash.locked"
+Enforcing
+orange
+0
+```
+
+Therefore **SELinux Enforcing**, **AVB/orange (unlocked)** and
+**ro.boot.flash.locked=0** were observed after successful boot with
+the `roots6lite-ci@github-actions` kernel. These are actual runtime
+results, not inferred from CI. Module import/signature logs,
+Wi-Fi/Bluetooth/audio/camera/charging and suspend/resume are still
+pending physical checks. The success of the baseline is permission
+to continue separate KernelSU research, **not permission to flash
+a new KernelSU image before its independent verification**.
