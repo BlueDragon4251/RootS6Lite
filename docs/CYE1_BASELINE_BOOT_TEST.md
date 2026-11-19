@@ -104,3 +104,29 @@ stale OEM signer bytes; physical boot, OEM module loading, Wi-Fi and other
 devices, Samsung compiler binary equivalence, and rooted KernelSU behavior.
 The pending next result is the owner's first-boot outcome. A successful
 package *generation* is not a successful device boot.
+
+## First physical boot observation — 2026-11-19
+
+The device owner reported flashing the privately provided experimental baseline
+Odin TAR to the **SM-P613 P613XXS8CYE1** and returning successfully to the
+Android system. This is the first **observed physical boot** of our isolated
+CYE1 source-built baseline.
+
+The owner supplied direct ADB evidence:
+
+```text
+Linux version 4.14.190-perf-28683246-abP613XXS8CYE1 (roots6lite-ci@github-actions) (Android (6051079 based on r370808) clang version 10.0.1 (https://android.googlesource.com/toolchain/llvm-project b9738d6d99f614c8bf7a3e7c769659b313b88244), GNU ld (binutils-2.27-bd24d23f) 2.27.0.20170315) #1 SMP PREEMPT Thu Jan 1 00:00:00 UTC 1970
+```
+
+The unique `roots6lite-ci@github-actions` build identity and Clang 10.0.1
+identify our rebuilt kernel, not Samsung's original OEM binary. Therefore
+the bootloader accepted the experimental boot-image packaging sufficiently to
+start the modified kernel and reach Android userland. This **overrides the
+earlier unverified physical-boot/bootloader gate for this one device test only**.
+
+**Not yet tested or confirmed:** SELinux and verified-boot readings after
+flash, Samsung stock module loading and signatures, Wi-Fi/Bluetooth/audio/
+camera/charging, stability, suspend/resume, and any KernelSU Next/root
+behavior. No KernelSU was included in the baseline TAR. The owner was asked
+to run the remaining ADB commands as one quoted `adb shell` invocation
+because multiple pasted Windows CMD lines did not execute as intended.
