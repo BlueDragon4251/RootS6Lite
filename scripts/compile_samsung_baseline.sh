@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Experimental, NOT FLASHABLE. The device stock kernel is P613XXS8CYE1;
-# Samsung OSRC P613XXU4CWL1 may be older; neither APT Clang 14 nor
-# pinned AOSP Clang 10 is Samsung's proprietary Qualcomm Clang 10.
+# Experimental, NOT FLASHABLE. Supports the archived CWL1 research control
+# and Samsung's newer P619-base + exact P613XXS8CYE1 overlay as separate,
+# explicitly identified source profiles. Neither compiler is Samsung OEM.
 set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(realpath "${1:?kernel source directory}")"
@@ -9,6 +9,21 @@ OUT="$(realpath -m "${2:?output directory}")"
 EVIDENCE="$(realpath -m "${3:?evidence directory}")"
 mkdir -p "$OUT" "$EVIDENCE"
 test -f "$SRC/arch/arm64/configs/gta4xlvewifi_eur_open_defconfig"
+SOURCE_PROFILE="${SAMSUNG_SOURCE_PROFILE:-cwl1-control}"
+case "$SOURCE_PROFILE" in
+  cwl1-control)
+    SOURCE_FIRMWARE=P613XXU4CWL1
+    SOURCE_ARCHIVE_SHA256=728e592f5ad856773e093a01adebedb06a5ef2554c85813ae275a842eecb13b7
+    CONFIG_PROVENANCE='CYE1_FIVE_PROCA_S_OS (generated from CWL1 + Kconfig olddefconfig)'
+    ;;
+  official-cye1)
+    test "${SAMSUNG_CYE1_ARCHIVE_VERIFIED:-}" = 'YES'
+    SOURCE_FIRMWARE=P613XXS8CYE1
+    SOURCE_ARCHIVE_SHA256=e3e144de155e5d82477b83c5642146fefb1a8af272061ec2a6b4532a6a03234f
+    CONFIG_PROVENANCE='P619_2025_BASE_PLUS_EXACT_P613XXS8CYE1_OVERLAY'
+    ;;
+  *) echo "::error::Unknown SAMSUNG_SOURCE_PROFILE=$SOURCE_PROFILE" >&2; exit 2 ;;
+esac
 
 # Record the as-extracted file hashes so CI-only edits can be audited.
 {
@@ -120,13 +135,14 @@ args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TR
 {
   echo "SOURCE_VERSION=4.14.190"
   echo "TEMP_SOURCE_CHANGE=Python2 wrapper, two digital-cdc void prototypes, two camera CPAS pointer-to-handle casts (CI-only); original Samsung archive unchanged"
-  echo "SOURCE_FIRMWARE=P613XXU4CWL1"
+  echo "SOURCE_FIRMWARE=$SOURCE_FIRMWARE"
+  echo "SOURCE_PROFILE=$SOURCE_PROFILE"
   echo "DEVICE_FIRMWARE=P613XXS8CYE1"
   echo "COMPILER_EXPERIMENT=$COMPILER_DESCRIPTION + verified AOSP Android GCC 4.9 binutils linker"
   echo "LINKER_SELECTION=${CROSS_COMPILE}ld (AOSP Android GCC 4.9 commit 606f80986096476912e04e5c2913685a8f2c3b65; ld.bfd SHA256 2a663de4ce3d702fe3f2a0de48cac366be676f850c2f5732d9cc2e4acb9335e2)"
   echo "COMPILER_PROFILE=$COMPILER_PROFILE"
   echo "COMPILER_FLAGS=$KCFLAGS_PROFILE (diagnostic compatibility only; warnings are not fixes)"
-  echo "STOCK_CONFIG_PROFILE=CYE1_FIVE_PROCA_S_OS (generated from CWL1 + Kconfig olddefconfig)"
+  echo "STOCK_CONFIG_PROFILE=$CONFIG_PROVENANCE"
   echo "STOCK_COMPATIBILITY=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
 } > "$EVIDENCE/provenance.txt"
@@ -136,7 +152,7 @@ args=(O="$OUT" ARCH=arm64 CROSS_COMPILE="$CROSS_COMPILE" CLANG_TRIPLE="$CLANG_TR
   echo "RUNNER_IMAGE=${ImageOS:-unknown} ${ImageVersion:-unknown}"
   echo "GITHUB_SHA=${GITHUB_SHA:-unknown}"
   echo "GITHUB_RUN_ID=${GITHUB_RUN_ID:-unknown}"
-  echo "SOURCE_ARCHIVE_SHA256=728e592f5ad856773e093a01adebedb06a5ef2554c85813ae275a842eecb13b7"
+  echo "SOURCE_ARCHIVE_SHA256=$SOURCE_ARCHIVE_SHA256"
   echo "TOOLCHAIN_VERSION_PINNED=$PINNING_STATUS"
   "$REAL_COMPILER" --version | head -1
   echo "REAL_COMPILER=$REAL_COMPILER"
@@ -175,11 +191,15 @@ if grep -Eq '^CONFIG_TZIC(=|_)' "$OUT/.config"; then
 fi
 cp "$OUT/.config" "$EVIDENCE/stock-generated.config"
 sha256sum "$OUT/.config" > "$EVIDENCE/config.sha256"
-# Full original CYE1 IKCONFIG is byte-identical to this result after dropping
-# only one explicitly disabled, source-absent USB-lockscreen config comment.
-# Pin the expected reconciled hash so future baseline drift is visible.
-echo "3345e9d95ccc30da221c345f3f25fb974e42d890c2f630bb52fe8be2ef9716df  $OUT/.config" | sha256sum -c -
-echo "CYE1_CONFIG_PARITY=ALL_CONFIG_LINES_MATCH_EXCEPT_ONE_DISABLED_SOURCE_ABSENT_OPTION" | tee -a "$EVIDENCE/status.txt"
+# The CWL1 reconstruction has an independently validated historical hash.
+# The new Samsung CYE1 source has its own unpinned .config until verified
+# against authenticated stock IKCONFIG; never misapply the CWL1 digest.
+if [[ "$SOURCE_PROFILE" == cwl1-control ]]; then
+  echo "3345e9d95ccc30da221c345f3f25fb974e42d890c2f630bb52fe8be2ef9716df  $OUT/.config" | sha256sum -c -
+  echo "CYE1_CONFIG_PARITY=ALL_CONFIG_LINES_MATCH_EXCEPT_ONE_DISABLED_SOURCE_ABSENT_OPTION" | tee -a "$EVIDENCE/status.txt"
+else
+  echo "CYE1_NEW_SOURCE_CONFIG=GENERATED_HASH_RECORDED_NOT_YET_AUTHENTICATED_AGAINST_STOCK" | tee -a "$EVIDENCE/status.txt"
+fi
 grep -F 'CONFIG_KALLSYMS=y' "$OUT/.config"
 grep -F '# CONFIG_KPROBES is not set' "$OUT/.config"
 echo "STOCK_SECURITY_PROFILE=FIVE_y_PROCA_y_PROCA_S_OS_y_TZIC_n" | tee -a "$EVIDENCE/status.txt"
@@ -287,23 +307,33 @@ BASE_DTB="arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb"
 DEVICE_DTBO="arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo"
 test -s "$OUT/$BASE_DTB"
 test -s "$OUT/$DEVICE_DTBO"
-# Reference hashes were extracted from the original whole-file-hash-verified
-# P613XXS8CYE1 boot/recovery images (audit v3). Enforce exact board-tree
-# parity for this research target, but never equate it to module/boot parity.
+# Reference hashes were extracted from original whole-file-hash-verified
+# P613XXS8CYE1 images. CWL1 used to reproduce these bit-for-bit. Compare
+# new Samsung CYE1 source without assuming hash parity or flash approval.
 STOCK_BASE_DTB_SHA256=e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816
 STOCK_BOARD_DTBO_SHA256=aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12
-printf '%s  %s\n' "$STOCK_BASE_DTB_SHA256" "$OUT/$BASE_DTB" | sha256sum -c -
-printf '%s  %s\n' "$STOCK_BOARD_DTBO_SHA256" "$OUT/$DEVICE_DTBO" | sha256sum -c -
+base_match=NO
+dtbo_match=NO
+if [[ "$(sha256sum "$OUT/$BASE_DTB" | cut -d' ' -f1)" == "$STOCK_BASE_DTB_SHA256" ]]; then
+  base_match=YES
+fi
+if [[ "$(sha256sum "$OUT/$DEVICE_DTBO" | cut -d' ' -f1)" == "$STOCK_BOARD_DTBO_SHA256" ]]; then
+  dtbo_match=YES
+fi
+if [[ "$SOURCE_PROFILE" == cwl1-control && ( "$base_match" != YES || "$dtbo_match" != YES ) ]]; then
+  echo "::error::CWL1 previously authenticated DTB / DTBO parity regressed" >&2
+  exit 1
+fi
 {
   echo "STOCK_BASE_DTB_SHA256=$STOCK_BASE_DTB_SHA256"
   echo "STOCK_BOARD_DTBO_SHA256=$STOCK_BOARD_DTBO_SHA256"
-  echo "BASE_DTB_BINARY_EQUAL_STOCK=YES"
-  echo "DEVICE_DTBO_BINARY_EQUAL_STOCK=YES"
+  echo "BASE_DTB_BINARY_EQUAL_STOCK=$base_match"
+  echo "DEVICE_DTBO_BINARY_EQUAL_STOCK=$dtbo_match"
   echo "MODULE_ABI_EQUAL_STOCK=UNVERIFIED"
   echo "FLASH_ALLOWED=NO"
 } >> "$EVIDENCE/provenance.txt"
-echo "BASE_DTB_BINARY_EQUAL_STOCK=YES" | tee -a "$EVIDENCE/status.txt"
-echo "DEVICE_DTBO_BINARY_EQUAL_STOCK=YES" | tee -a "$EVIDENCE/status.txt"
+echo "BASE_DTB_BINARY_EQUAL_STOCK=$base_match" | tee -a "$EVIDENCE/status.txt"
+echo "DEVICE_DTBO_BINARY_EQUAL_STOCK=$dtbo_match" | tee -a "$EVIDENCE/status.txt"
 
 # Image alone omits the device-tree and module compatibility evidence needed
 # for later baseline work.  Require both output classes and retain manifests
