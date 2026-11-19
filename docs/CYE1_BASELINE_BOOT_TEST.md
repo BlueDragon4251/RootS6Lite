@@ -167,11 +167,12 @@ fastbootd: `unlocked:yes`, `is-userspace:no`, `kernel:uefi`, and
 and potential diagnostic partitions `logdump` (0x4000000), `logfs`
 (0x800000), `rawdump` (0x1000000) and `debug` (0xA00000).
 
-**Do not confuse partition names with recoverable crash logs.** A read-only
-`fastboot getvar max-fetch-size` query was requested to establish whether
-the optional Fastboot fetch protocol may be available. Its result and actual
-readback are not yet known. `getvar all` contained no `max-fetch-size` line.
-There is no evidence that `fastboot fetch logdump` or `fastboot boot` is
-implemented; neither operation has been authorized as a recovery mechanism.
+**Do not confuse partition names with recoverable crash logs.** A read-only `fastboot getvar max-fetch-size` query was performed and
+returned `FAILED (remote: 'GetVar Variable Not found')`. The standard AOSP
+host-side `fastboot fetch` requires `max-fetch-size`, so **standard partition
+readback is unavailable** from this bootloader. The observed `getvar all`
+likewise had no `max-fetch-size` entry. There is no evidence that proprietary
+OEM readback or `fastboot boot` is implemented. Do not interpret this as proof
+that the partitions have no useful crash data; their contents remain unread.
 Do not use `flash`, `erase`, `format`, `-w`, `set_active`, or unverified OEM
 commands to chase logs. Avoid publishing serial numbers or raw dumps.
