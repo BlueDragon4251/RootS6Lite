@@ -1,5 +1,8 @@
 # SM-P613 P613XXS8CYE1: verified original kernel export ABI comparison
 
+The first real Samsung-2025 CYE1 compile and its full reconstructed 12,530-export
+comparison are recorded in the [2026-11-19 CI evidence report](CYE1_CI_RESULTS_2026-11-19.md).
+
 > **Research evidence only. FLASH_ALLOWED=NO.** No physical boot, Samsung
 > vendor module installation or KernelSU root test has taken place.
 
