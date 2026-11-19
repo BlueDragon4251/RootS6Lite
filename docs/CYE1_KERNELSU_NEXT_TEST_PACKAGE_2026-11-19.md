@@ -101,3 +101,42 @@ matching Module.symvers, ELF hook symbols, or successful packaging.
 
 Record physical boot outcome as **FAILED**, while CI build/ABI audit stays
 **PASSED**; these results measure different things.
+
+
+## Verified rollback and magnetic-cover false alarm — 2026-11-19
+
+**Recovery succeeded.** After the early-boot failure of the KSU-enabled
+experiment, the owner restored the previously booted **non-KSU CYE1 baseline**
+using Odin (PASS). ADB subsequently detected the device; direct on-device
+readings showed sys.boot_completed=1, SurfaceFlinger running, the
+boot-animation service stopped, and /proc/version again identifying
+roots6lite-ci@github-actions, AOSP Clang 10.0.1 and exact CYE1 kernel
+release. This is positive evidence of returning to a booted baseline, **not**
+of successful KernelSU root.
+
+The first post-restore boot animation was physically visible, followed by a
+black screen and an all-black Android screenshot. The owner supplied a private
+logcat. Around 19:36:51 the Samsung cover service reported
+"updatePowerState : isOpen=false, type=0" and
+"PowerManagerService: updateCoverState: closed: true". At 19:36:55 Android
+explicitly requested goToSleep because of cover_close, then set the
+primary display state to OFF. Later hardware power-key attempts logged
+"!@Screen__On : Cancel (coverType: 0)". **The owner confirmed that the
+magnetic protective case was responsible**, moved/removed it, and the display
+returned with the Android user interface accessible. No display-stack or
+baseline-kernel boot regression is established by this incident.
+
+The uploaded full-device logcat and screenshot may contain personal data and
+are **not** committed to this public repository. The source-built baseline has
+been physically booted again; full Samsung module loading, power-management
+stability and all peripheral functions are still not validated.
+
+**The KSU early-boot failure remains unresolved.** It happened with a separate
+known-failing inner boot.img SHA256
+d3a7a5dae7d4137e1bb54930a5ef5efb655e57cd6ca2a453d56cc3d2aa3cdce7.
+No KSU panic/pstore trace has been recovered, and this baseline logcat is
+from a *different* (non-KSU) kernel boot, so it cannot identify the KSU crash.
+Do not retry the same binary. Investigate pinned legacy/manual-hook early init,
+Samsung RKP/KDP/FIVE/PROCA integration and optional preinit separately, using
+explicitly isolated changes and independent CI review before another physical
+test. Preserve the working baseline Odin recovery package.
