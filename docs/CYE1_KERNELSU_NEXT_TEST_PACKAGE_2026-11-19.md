@@ -85,9 +85,8 @@ matching Module.symvers, ELF hook symbols, or successful packaging.
   `d3a7a5dae7d4137e1bb54930a5ef5efb655e57cd6ca2a453d56cc3d2aa3cdce7`.
 - **Known-failing Odin TAR** SHA256:
   `e3b1fe96470973ea99a603d657700d039a20fc8aa4b1a79cc876bbf276dd0626`.
-- Failure phase (Samsung splash vs boot animation), restart cycle, kernel
-  panic/pstore, and recovery outcome are **not yet reported**. Do not assert
-  a proven root cause.
+- Additional device video: unlocked-bootloader warning, **Samsung Galaxy / Secured by Knox** splash, no Android boot animation within the 66-second recording; Android Recovery UI is accessible. This establishes an **early boot hang/failure**, but the recording does not itself prove repeated automatic restarts.
+- Kernel panic/pstore, exact restart cycle, and recovery after baseline reflash are **not yet reported**. Do not assert a proven root cause.
 - Recommended immediate recovery: reflash the previously booted CYE1 baseline
   Odin AP package, or exact matching original Samsung CYE1 firmware, using
   Download Mode. Do not factory-reset as a substitute for restoring `boot`.
