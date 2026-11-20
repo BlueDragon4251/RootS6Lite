@@ -209,9 +209,13 @@ release certificates. Only the separate local package report records scope
 **191/191 local tests pass, including 39 packager tests.** Independent read-only
 review and a separate full-suite run found no blocker in the narrowed profile.
 Negative tests cover missing/changed inputs, false acknowledgement, both failed
-Images in every mode, and continued mandatory ordinary validation gates. The
-post-change GitHub self-test result will be recorded separately; these local
-results must not be represented as a new kernel compile.
+Images in every mode, and continued mandatory ordinary validation gates.
+GitHub confirms the post-change self-test
+[44697341083](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44697341083)
+and job `136157146931` **completed/success** for packaging commit
+`22f5242c297f80af7f5cba51cc0eed3d41c66c70`, including the guarded packager step.
+This workflow runs the selected source/boot/package self-tests, not the entire
+191-test local suite, and is not a new kernel compile.
 
 The new TAR and JSON report were each generated twice from the original stock
 boot and the already-compiled Image. Both complete TARs and both reports are
@@ -240,6 +244,25 @@ AVB is internally consistent but algorithm **NONE / unsigned**. Verification
 of that hash footer is not OEM authentication or proof that a Samsung device
 will accept or boot the Image. The rollback TAR matches the previously booted
 baseline byte-for-byte; it is not a new rebuild.
+
+An independent parser subsequently read the actual final TAR/boot bytes, not
+just the package report. It confirms one regular USTAR entry, the exact Image
+after gzip integrity checking, and the complete 4096-byte stock header page
+except the necessary kernel-size and recalculated image-ID fields. The v2
+SHA1 ID was independently recomputed as
+`e9c3a75a845b146ad7e5ac938b300ecf5d3c5379`. Ramdisk, full DTB, original 528-byte
+trailer, load addresses, commandline and recovery fields are byte-exact.
+All payload and AVB padding is zero-filled as expected.
+
+The independent AVB parse confirms a 20,058,640-byte hashed payload,
+20,062,208-byte vbmeta offset, 512-byte vbmeta, one 200-byte `boot` hash
+descriptor, zero-byte authentication block and a footer at 100,663,232.
+Recalculated SHA256 of original salt plus payload is
+`e1f33980d19ed3627a25982597ac34728e56533a587a8bf93bb315bf10d20789`,
+matching the descriptor. The pinned `avbtool verify_image` independently exits
+0. These are unsigned structure/integrity checks, not Samsung authentication.
+The rollback was separately parsed and its embedded baseline Image rehashed
+to `5609cb6faa2a6f07f4a0d0a2205f0d06fe696697cb6efc456d05a6b24d57d600`.
 
 Owner test scope: SM-P613 / P613XXS8CYE1 only; Odin AP only, other fields empty,
 no PIT/Re-Partition/Nand Erase, no added vbmeta image and no bootloader relock.
