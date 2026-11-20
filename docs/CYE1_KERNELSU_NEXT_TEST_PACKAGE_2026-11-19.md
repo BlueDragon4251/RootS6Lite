@@ -1,11 +1,23 @@
 # Experimental CYE1 + KernelSU Next boot images — 2026-11-19
 
-## Current status — 2026-11-20: KSU5 / trace also FAILED on device
+## Latest result — 2026-11-20: separate no-hide candidate starts Android
+
+After the experimental no-hide handoff, the owner reports Android started with
+`ksu nohide`. Record **first boot PASS (owner-reported)** for that separate
+candidate, not for either failed Image below. Its exact identities, evidence
+limits and next manager-recognition check are recorded in the
+[no-hide diagnostic report](CYE1_NO_SELINUX_HIDE_DIAGNOSTIC_2026-11-20.md#device-result--first-no-hide-android-boot-2026-11-20).
+Root authorization, actual OEM-module loading and repeat-boot reliability are
+not yet verified. No new kernel or package is needed just to record this result.
+
+## Earlier candidate status — 2026-11-20: KSU5 / trace also FAILED on device
 
 The owner reports **"wieder bootloop mit ksu"** after the KSU5/trace handoff.
 This supersedes the previous **device untested** status for that candidate.
 Record **physical boot FAILED (owner-reported)**, root **NOT ESTABLISHED**.
-No new crash log, restart timing or recovery outcome has yet been supplied.
+Stock Recovery was reachable but ADB reported `unauthorized`; no new crash log
+or restart timing was obtained. The owner subsequently reports having flashed
+back. Android startup after this particular rollback is not yet confirmed.
 The exact failure stage and cause remain unknown; do not invent a kernel panic.
 
 **Do not flash or repackage the KSU5/trace Image again:**
@@ -44,14 +56,14 @@ candidate path, **not current accessibility or that its contents are fresh**.
   Its earlier `max-fetch-size` query was unsupported. Do not invent OEM commands.
 - Restore the known-booted **baseline rollback TAR** via Odin AP in Download
   Mode if logs cannot be obtained promptly. No factory reset as a first step.
-  Keep full matching stock firmware as the fallback. The current restoration
-  has not yet been reported, even though baseline recovery succeeded previously.
+  Keep full matching stock firmware as the fallback. The owner now reports
+  flashing back; successful Android startup after this rollback is still open.
 
 Green CI remains valid compilation/static evidence, not a successful boot.
 The 42 marker strings in the Image do not tell us which marker executed on the
 device; new failed-boot evidence is needed to localize this incident.
 
-### Source-based next diagnostic hypothesis, not a diagnosis
+### Source-based diagnostic hypothesis, not a diagnosis
 
 The exact pinned [optional SELinux-hide subsystem](https://github.com/KernelSU-Next/KernelSU-Next/blob/e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a/kernel/feature/selinux_hide.c)
 starts an asynchronous kernel thread and installs file-operation hooks by
@@ -60,12 +72,19 @@ paths also install these hooks. Thus `init.after.ksu_selinux_hide_init` only
 records return from thread creation; it does not prove that worker completed.
 The existing 42 markers do not individually enclose that asynchronous worker.
 
-This is a concrete, isolated future comparison candidate: omit the optional
+This is a concrete, isolated comparison candidate: omit the optional
 hide subsystem's thread and installation entry points in an explicitly named
 diagnostic profile, **not** SELinux enforcement or Samsung protection checks.
 Merely setting its feature boolean false is not equivalent: the setter changes
-filtering but does not prevent installation. No such variant has yet been
-built or flashed, and the subsystem is **not established as the failure cause**.
+filtering but does not prevent installation. The separate research branch
+`agent/ksu-no-selinux-hide-diag` has now compiled and statically verified that
+variant in successful [run 44692312623](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44692312623);
+the independent artifact comparisons and remaining limits are recorded in
+the [diagnostic report](CYE1_NO_SELINUX_HIDE_DIAGNOSTIC_2026-11-20.md).
+It is not a general Odin release. A later explicit owner request is handled by
+a separate exact-artifact **experimental boot-test** profile in that report;
+both failed Images documented here remain blocked. The subsystem is **not
+established as the failure cause**.
 
 Useful actual-log landmarks are `ROOTS6_KSU_TRACE: init.entry`, the paired
 `init.before/after.prepare_creds` and `init.before/after.ksu_lsm_hook_init`,
@@ -74,9 +93,11 @@ Useful actual-log landmarks are `ROOTS6_KSU_TRACE: init.entry`, the paired
 `setup_ksu_cred`. An `after` marker only proves return, not semantic success;
 missing markers in incomplete or lost logs do not prove a path was not run.
 
-Local post-incident regression run: **154/154 tests passed**, including
-**25/25 packager tests**. These test the rejection and validation logic, not
-the device boot. Post-commit GitHub CI must be checked separately.
+At incident-recording commit `f2552a943066bb5dc5bf9b857cb77e776bc152f7`,
+**154/154 local tests passed**, including **25/25 packager tests**. The later
+no-hide diagnostic increases that to **179/179**, including **27/27 packager
+tests**, and is confirmed by its own GitHub compile/self-test runs above.
+These test rejection and validation logic, not device boot.
 
 ## Historical KSU5 / trace preparation — static checks passed before device test
 
