@@ -53,7 +53,7 @@ Green CI remains valid compilation/static evidence, not a successful boot.
 The 42 marker strings in the Image do not tell us which marker executed on the
 device; new failed-boot evidence is needed to localize this incident.
 
-### Source-based next diagnostic hypothesis, not a diagnosis
+### Source-based diagnostic hypothesis, not a diagnosis
 
 The exact pinned [optional SELinux-hide subsystem](https://github.com/KernelSU-Next/KernelSU-Next/blob/e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a/kernel/feature/selinux_hide.c)
 starts an asynchronous kernel thread and installs file-operation hooks by
@@ -67,8 +67,10 @@ hide subsystem's thread and installation entry points in an explicitly named
 diagnostic profile, **not** SELinux enforcement or Samsung protection checks.
 Merely setting its feature boolean false is not equivalent: the setter changes
 filtering but does not prevent installation. The separate research branch
-`agent/ksu-no-selinux-hide-diag` prepares that variant; its actual build and
-verification results are recorded in the [diagnostic report](CYE1_NO_SELINUX_HIDE_DIAGNOSTIC_2026-11-20.md).
+`agent/ksu-no-selinux-hide-diag` has now compiled and statically verified that
+variant in successful [run 44692312623](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44692312623);
+the independent artifact comparisons and remaining limits are recorded in
+the [diagnostic report](CYE1_NO_SELINUX_HIDE_DIAGNOSTIC_2026-11-20.md).
 It is not an Odin release. The subsystem is **not established as the failure cause**.
 
 Useful actual-log landmarks are `ROOTS6_KSU_TRACE: init.entry`, the paired
@@ -78,9 +80,11 @@ Useful actual-log landmarks are `ROOTS6_KSU_TRACE: init.entry`, the paired
 `setup_ksu_cred`. An `after` marker only proves return, not semantic success;
 missing markers in incomplete or lost logs do not prove a path was not run.
 
-Local post-incident regression run: **154/154 tests passed**, including
-**25/25 packager tests**. These test the rejection and validation logic, not
-the device boot. Post-commit GitHub CI must be checked separately.
+At incident-recording commit `f2552a943066bb5dc5bf9b857cb77e776bc152f7`,
+**154/154 local tests passed**, including **25/25 packager tests**. The later
+no-hide diagnostic increases that to **179/179**, including **27/27 packager
+tests**, and is confirmed by its own GitHub compile/self-test runs above.
+These test rejection and validation logic, not device boot.
 
 ## Historical KSU5 / trace preparation — static checks passed before device test
 
