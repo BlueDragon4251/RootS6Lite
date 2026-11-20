@@ -298,9 +298,9 @@ and TAR SHA256 `d449365f3f78c8014aaaeccfc0ed78bf25b4af1c8216018334845719a1aeb31c
 | Runtime question | Current evidence |
 | --- | --- |
 | Android starts with the no-hide candidate | PASS, owner-reported first boot |
-| KernelSU Next manager recognizes the kernel | NOT YET VERIFIED |
+| KernelSU Next manager recognizes the kernel | CONFIRMED by later owner screenshot; basic recognition succeeds, UAPI 5/6 mismatch remains |
 | An explicitly authorized app obtains UID 0 | NOT YET VERIFIED |
-| Live SELinux enforcing state on this boot | NOT YET MEASURED; build config remains enforcing-capable |
+| Live SELinux enforcing state on this boot | Manager displays enforcing; not yet independently measured with getenforce |
 | OEM-module loading and Wi-Fi/Bluetooth/audio/suspend behavior | NOT YET VALIDATED |
 | Repeat-boot reliability and longer-term stability | NOT YET VALIDATED |
 
@@ -322,3 +322,27 @@ The two earlier failed Image hashes remain rejected, the PR stays draft and
 the normal packaging gates remain unchanged. No kernel source, Image, TAR,
 original CI manifest or historical package report is changed by recording
 this user observation.
+
+## Follow-up: manager recognition confirmed, UAPI mismatch identified
+
+The owner supplied the complete manager screen after the successful no-hide
+boot. It displays `Arbeitet`, `BUILT-IN (LEGACY)`, kernel
+`v3.4.0-legacy (33327-6)`, `Manual`, manager `v3.4.2 (33355-5)`, and the exact
+warning that manager API 5 is below kernel API 6. The Android kernel release
+matches CYE1. This is positive evidence of basic manager/kernel recognition,
+not an independent UID-0 authorization test or complete manager compatibility.
+
+The screenshot displays SELinux `Erzwingung`, but the manager implementation
+also returns that label when the enforce file cannot be read. Record the UI
+observation without upgrading it to an independent `getenforce` measurement.
+`Seccomp: Disabled` is read through `prctl(PR_GET_SECCOMP)` in the manager's
+calling context, not a global kernel setting; the actual build still has
+`CONFIG_SECCOMP=y` and `CONFIG_SECCOMP_FILTER=y`.
+
+A matching, unchanged official UAPI-6 development APK was found and validated
+without rebuilding the kernel or changing manager trust. Full source/artefact,
+signature, interface and update-side-effect evidence is recorded in
+[the manager validation report](CYE1_MANAGER_UAPI6_VALIDATION_2026-11-20.md).
+The next device step is an in-place manager update and a new complete status
+screenshot, not another Odin flash. Root, OEM-module loading and stability
+remain separate pending checks. Both failed KSU Images remain blocked.
