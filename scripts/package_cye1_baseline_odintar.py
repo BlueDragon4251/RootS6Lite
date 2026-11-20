@@ -5,6 +5,8 @@ Requires the user's SHA256-pinned stock boot.img and a independently inspected,
 CI-built Image. The default baseline mode rejects KernelSU; the explicit
 KernelSU mode requires raw-Image call-edge/ELF and diagnostic trace audits,
 plus pinned KSU provenance.
+The separate owner-confirmed no-hide test mode accepts only one pinned CI
+Image/map/report set; it does not change or override the CI research status.
 Keeps the original ramdisk/DTB and Samsung
 SignerVer02 trailer. Replaces the OEM-signed AVB footer with a *self-consistent
 but UNSIGNED* hash footer; bootloader acceptance is NOT established.
@@ -31,6 +33,10 @@ from instrument_kernelsu_boot_trace import verify_linked_trace
 from verify_kernelsu_call_edges import SAMSUNG_CYE1_CALLERS
 from verify_kernelsu_research_symbols import audit as audit_ksu_symbols
 from verify_kernelsu_preinit_elf import inspect as inspect_ksu_elf
+from prepare_ksu_no_selinux_hide import (
+    expected_manifest as expected_no_hide_source_manifest,
+    verify_embedded_config as verify_no_hide_embedded_config,
+)
 
 
 STOCK_BOOT_SHA256 = "06888f51722264ef33f2299e6ccaefab9e6e0c7a96d51c5c8a74cfeecd265655"
@@ -50,6 +56,13 @@ KSU_UPSTREAM_REVISION = "e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a"
 # This isolated profile changes optional feature behavior. It must not silently
 # pass the normal KSU package gates just because config/main hooks are identical.
 NONFLASHABLE_KSU_DIAGNOSTIC_MARKER = b"ROOTS6_KSU_NO_SELINUX_HIDE"
+NO_HIDE_TEST_MODE = "kernelsu-no-hide-test"
+NO_HIDE_TEST_RUN_ID = 44692312623
+NO_HIDE_TEST_BUILD_COMMIT = "ded27cc8a2c2fa4bba09c0a115a0a2983c8be589"
+NO_HIDE_TEST_IMAGE_SHA256 = "8765677928ad2011b1b714a17e347956f85d359130b5e73126286bbdfe9a876d"
+NO_HIDE_TEST_MAP_SHA256 = "a21563875c433e8b6d34a469eabf7591e77bbb0e50657c862014d1a4227ca940"
+NO_HIDE_SOURCE_REPORT_SHA256 = "5937d3014e69cf11ba155cf27ada87e172a6cfd0c2cfe19ff7c53406314658fa"
+NO_HIDE_LINKED_REPORT_SHA256 = "fcd1490aa962ee579aff64c8e355ae67af303fbc9f0fa9f83d85e13141be14d4"
 # Owner-reported physical boot failures override all successful static gates.
 # Keep both failures: adding tracing/the fifth hook did not establish bootability.
 KNOWN_FAILED_KSU_IMAGE_SHA256S = frozenset({
@@ -264,11 +277,77 @@ def reject_nonflashable_diagnostic(image: bytes) -> None:
         raise ValueError("Nonflashable KernelSU no-SELinux-hide diagnostic Image: research only, do not package")
 
 
-def verify_ksu_inputs(args, image: bytes) -> dict:
+def read_pinned_no_hide_report(path: Path, expected_sha256: str, label: str) -> dict:
+    data = path.read_bytes()
+    if sha256(data) != expected_sha256:
+        raise ValueError(f"Original no-hide {label} report SHA256 differs from audited CI run")
+    result = json.loads(data)
+    if not isinstance(result, dict):
+        raise ValueError(f"Original no-hide {label} report is not an object")
+    return result
+
+
+def verify_packaging_profile(args, image: bytes) -> dict:
+    """Fail closed before the single, explicitly acknowledged artifact exception.
+
+    There is no force/skip argument: normal modes still reject the sentinel,
+    and the acknowledgement cannot admit an arbitrary diagnostic Image.
+    """
     image_sha256 = sha256(image)
     if image_sha256 in KNOWN_FAILED_KSU_IMAGE_SHA256S:
         raise ValueError(f"Known failed on-device KernelSU Image {image_sha256}: do not repackage or reflash")
-    reject_nonflashable_diagnostic(image)
+    mode = getattr(args, "mode", "kernelsu")
+    accepted = getattr(args, "accept_experimental_no_hide_test", False)
+    if mode != NO_HIDE_TEST_MODE:
+        reject_nonflashable_diagnostic(image)
+        if mode not in ("baseline", "kernelsu") or accepted:
+            raise ValueError("No-hide acknowledgement is valid only with the explicit kernelsu-no-hide-test mode")
+        return {}
+    if accepted is not True:
+        raise ValueError("No-hide boot test requires --accept-experimental-no-hide-test")
+    if image_sha256 != NO_HIDE_TEST_IMAGE_SHA256:
+        raise ValueError("No-hide boot test accepts only the exact audited CI Image")
+    if NONFLASHABLE_KSU_DIAGNOSTIC_MARKER not in image:
+        raise ValueError("Pinned no-hide Image lacks its required diagnostic marker")
+    required = ("system_map", "ksu_no_hide_source_manifest", "ksu_no_hide_linked_report")
+    if any(getattr(args, field, None) is None for field in required):
+        raise ValueError("No-hide boot test requires System.map and both original CI no-hide reports")
+    if sha256(args.system_map.read_bytes()) != NO_HIDE_TEST_MAP_SHA256:
+        raise ValueError("No-hide boot test accepts only the exact audited CI System.map")
+    source = read_pinned_no_hide_report(args.ksu_no_hide_source_manifest, NO_HIDE_SOURCE_REPORT_SHA256, "source")
+    linked = read_pinned_no_hide_report(args.ksu_no_hide_linked_report, NO_HIDE_LINKED_REPORT_SHA256, "linked")
+    if source != expected_no_hide_source_manifest(True):
+        raise ValueError("No-hide source report fields do not match the audited one-file diagnostic")
+    fields = {
+        "mode": "kernelsu-no-selinux-hide", "RESEARCH_ONLY": "YES", "FLASH_ALLOWED": "NO",
+        "CONFIG_UNCHANGED": True, "OPTIONAL_HIDE_BEHAVIOR_CHANGED": True,
+        "DEVICE_BOOT_TEST": "NOT_PERFORMED", "ROOT_FUNCTIONALITY": "UNVERIFIED",
+        "NO_SELINUX_HIDE_VERIFIED": True, "OPTIONAL_HIDE_IMPLEMENTATION_ABSENT": True,
+        "EMBEDDED_CONFIG_MATCH": True, "RUNTIME_CORRECTNESS_PROVEN": False,
+        "image_sha256": NO_HIDE_TEST_IMAGE_SHA256, "system_map_sha256": NO_HIDE_TEST_MAP_SHA256,
+        "config_sha256": KSU_CONFIG_SHA256, "source_sha256": source["after_sha256"],
+    }
+    if any(linked.get(key) != value for key, value in fields.items()):
+        raise ValueError("No-hide linked report fields contradict the pinned diagnostic evidence")
+    embedded_config = verify_no_hide_embedded_config(image)
+    if linked.get("embedded_config") != embedded_config:
+        raise ValueError("No-hide CI embedded config does not match the actual Image")
+    return {
+        "package_scope": "OWNER_REQUESTED_EXPERIMENTAL_BOOT_TEST",
+        "owner_accepted_experimental_no_hide_test": True,
+        "optional_hide_behavior_changed": True,
+        "embedded_config_match": True,
+        "no_hide_ci_run_id": NO_HIDE_TEST_RUN_ID, "no_hide_ci_build_commit": NO_HIDE_TEST_BUILD_COMMIT,
+        "no_hide_source_report_sha256": NO_HIDE_SOURCE_REPORT_SHA256,
+        "no_hide_linked_report_sha256": NO_HIDE_LINKED_REPORT_SHA256,
+        # Preserve the original FLASH_ALLOWED=NO evidence without rewriting it
+        # as an authorization. Only this local owner's test package is opt-in.
+        "no_hide_ci_source_report": source, "no_hide_ci_linked_report": linked,
+    }
+
+
+def verify_ksu_inputs(args, image: bytes) -> dict:
+    profile_details = verify_packaging_profile(args, image)
     required = ("ksu_config", "system_map", "baseline_image", "ksu_provenance", "ksu_hooks_manifest", "ksu_trace_manifest")
     if any(getattr(args, field, None) is None for field in required):
         raise ValueError("KernelSU mode requires config, System.map, booted baseline, upstream, hook and trace manifests")
@@ -283,7 +362,7 @@ def verify_ksu_inputs(args, image: bytes) -> dict:
     if f"KSU_UPSTREAM_LEGACY_COMMIT={KSU_UPSTREAM_REVISION}" not in provenance:
         raise ValueError("KernelSU Next upstream revision is unverified")
     verify_ksu_hook_manifest(args.ksu_hooks_manifest.read_text())
-    system_map = args.system_map.read_text()
+    system_map = args.system_map.read_bytes().decode()
     call_edges = verify_ksu_raw_call_edges(image, system_map)
     trace_bytes = args.ksu_trace_manifest.read_bytes()
     trace = verify_ksu_trace(json.loads(trace_bytes), image, config.decode())
@@ -306,12 +385,15 @@ def verify_ksu_inputs(args, image: bytes) -> dict:
         "kernelsu_preinit_page_congruence": elf["PAGE_CONGRUENCE_VERIFIED"],
         "booted_baseline_image_sha256": BOOTED_BASELINE_IMAGE_SHA256,
         "ksu_config_sha256": sha256(config),
+        **profile_details,
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("baseline", "kernelsu"), default="baseline")
+    parser.add_argument("--mode", choices=("baseline", "kernelsu", NO_HIDE_TEST_MODE), default="baseline")
+    parser.add_argument("--accept-experimental-no-hide-test", action="store_true",
+                        help="Owner accepts one unproven boot test of the hard-pinned no-hide CI artifact only")
     parser.add_argument("--stock-boot", required=True, type=Path)
     parser.add_argument("--kernel-image", required=True, type=Path)
     parser.add_argument("--expected-kernel-sha256", required=True)
@@ -328,11 +410,17 @@ def main() -> None:
     parser.add_argument("--ksu-hooks-manifest", type=Path)
     parser.add_argument("--ksu-trace-manifest", type=Path,
                         help="Required source instrumentation manifest for the current KSU diagnostic profile")
+    parser.add_argument("--ksu-no-hide-source-manifest", type=Path)
+    parser.add_argument("--ksu-no-hide-linked-report", type=Path)
     parser.add_argument("--mkbootimg-directory", required=True, type=Path)
     parser.add_argument("--avbtool-directory", required=True, type=Path)
     parser.add_argument("--output-tar", required=True, type=Path)
     parser.add_argument("--report", required=True, type=Path)
     args = parser.parse_args()
+    if args.mode == NO_HIDE_TEST_MODE:
+        if (args.output_tar.exists() or args.report.exists()
+                or args.output_tar.resolve() == args.report.resolve()):
+            raise ValueError("No-hide test requires new, separate TAR and package-report output paths")
 
     mk = args.mkbootimg_directory / "mkbootimg.py"
     unpack = args.mkbootimg_directory / "unpack_bootimg.py"
@@ -344,7 +432,7 @@ def main() -> None:
     if len(stock) != PARTITION_SIZE or sha256(stock) != STOCK_BOOT_SHA256:
         raise ValueError("Stock boot does not match exact P613XXS8CYE1 reference")
     image = args.kernel_image.read_bytes()
-    reject_nonflashable_diagnostic(image)  # All modes, before any output is written.
+    verify_packaging_profile(args, image)  # Every mode, before any output is written.
     if sha256(image) != args.expected_kernel_sha256.lower() or len(image) < 45000000 or image[56:60] != b"ARMd":
         raise ValueError("Unexpected compiled ARM64 Image (size, PE header, or digest)")
     if STOCK_KERNELRELEASE.encode() not in image:
@@ -360,7 +448,8 @@ def main() -> None:
     )
     if expected_config == original_config or args.built_config.read_bytes() != expected_config:
         raise ValueError("Effective CYE1 Kconfig deviates from stock beyond public certificate addition")
-    ksu_details = verify_ksu_inputs(args, image) if args.mode == "kernelsu" else {}
+    is_ksu_mode = args.mode in ("kernelsu", NO_HIDE_TEST_MODE)
+    ksu_details = verify_ksu_inputs(args, image) if is_ksu_mode else {}
     # OpenSSL emits binary DER; subprocess text mode would corrupt it.
     cert = subprocess.run(["openssl", "x509", "-in", str(args.stock_public_cert), "-outform", "DER"],
                           check=True, capture_output=True).stdout
@@ -415,7 +504,9 @@ def main() -> None:
             if names != ["boot.img"] or archive.extractfile("boot.img").read() != data:
                 raise ValueError("Odin tar archive roundtrip failed")
         report = {
-            "model": "SM-P613", "firmware": "P613XXS8CYE1", "mode": "KERNELSU_NEXT_EXPERIMENT" if args.mode == "kernelsu" else "NONROOT_BASELINE_BOOT_EXPERIMENT",
+            "model": "SM-P613", "firmware": "P613XXS8CYE1",
+            "mode": {"baseline": "NONROOT_BASELINE_BOOT_EXPERIMENT", "kernelsu": "KERNELSU_NEXT_EXPERIMENT",
+                     NO_HIDE_TEST_MODE: "KERNELSU_NEXT_NO_HIDE_OWNER_BOOT_TEST"}[args.mode],
             "stock_boot_sha256": sha256(stock), "compiled_image_sha256": sha256(image),
             "compiled_image_bytes": len(image), "boot_image_sha256": sha256(data),
             "boot_image_bytes": len(data), "odin_tar_sha256": sha256(args.output_tar.read_bytes()),
@@ -428,8 +519,8 @@ def main() -> None:
             "full_reconstructed_export_matches": abi["exact_export_name_crc_class_matches"],
             "module_symvers_sha256": abi["compiled_symvers_sha256"],
             "stock_config_byte_parity_except_public_cert": True,
-            "final_kernel_has_kernelsu_kconfig_additions": args.mode == "kernelsu",
-            "root_on_device": "NOT_TESTED" if args.mode == "kernelsu" else "NOT_APPLICABLE",
+            "final_kernel_has_kernelsu_kconfig_additions": is_ksu_mode,
+            "root_on_device": "NOT_TESTED" if is_ksu_mode else "NOT_APPLICABLE",
             "recovery": "USER_MUST_HAVE_MATCHING_STOCK_ODIN_FIRMWARE_AND_DOWNLOAD_MODE",
             "flash_readiness": "UNVERIFIED_EXPERIMENTAL_ONLY", **details, **ksu_details,
         }

@@ -2,8 +2,11 @@
 
 ## Status and purpose
 
-Compile and static verification passed; research only: **no Odin package; no
-physical boot or root claim**. This branch
+Compile and static verification passed. The original CI artifact remains
+research-only and contains no Odin package. Following the owner's explicit
+request to test, a separate, exact-artifact local Odin **boot-test package**
+has been prepared as documented below. **Physical boot and root remain
+unverified; this is not a confirmed bootloop fix.** This branch
 starts from `f2552a943066bb5dc5bf9b857cb77e776bc152f7`, which records both
 owner-reported KSU boot failures and rejects both failed Image hashes. The
 non-KSU baseline previously booted. The owner has now flashed back again;
@@ -56,8 +59,10 @@ code, not this implementation, and remains unchanged.
   vmlinux disassembly of the retained stubs must match raw Image bytes. Only
   empty returns or the exact init warning to `printk` are accepted. A manifest
   alone is not accepted as proof of omission.
-- `ROOTS6_KSU_NO_SELINUX_HIDE` identifies this Image. The guarded packager
-  explicitly rejects it even if all ordinary KSU static checks pass.
+- `ROOTS6_KSU_NO_SELINUX_HIDE` identifies this Image. Ordinary `baseline` and
+  `kernelsu` packaging modes reject it even if ordinary KSU static checks pass.
+  The later, owner-requested test profile below is separately opt-in and pinned
+  to this exact Image, map and original reports; no generic bypass is added.
 
 The trace patch's `POLICY_OR_HOOK_FLOW_CHANGED=false` describes that script's
 logging-only insertion, **not the whole diagnostic profile**. This profile
@@ -134,9 +139,11 @@ published SHA256 and passes ZIP integrity checking. It contains no Odin TAR.
   public CI certificate, each once. New CI certificate SHA256 is
   `a57e5e8399215533af11e69db4324cc0872dc96f4e1e235fa832c287476739d5`;
   OEM SHA256 remains `ff40a362febb34f98dd1f23a41e8ab4cc9ffbcba9152eee68ee2fbbf007d03b1`.
-- The guarded packager was tested against the **actual new Image bytes** and
-  rejected them as the nonflashable no-hide diagnostic, not just against a
-  synthetic sentinel fixture. No output TAR was created.
+- At the research stage, the guarded packager was tested against the **actual
+  new Image bytes** and rejected them as the nonflashable no-hide diagnostic,
+  not just against a synthetic sentinel fixture. No TAR was created at that
+  stage. Those ordinary-mode rejections remain in effect after addition of the
+  owner-requested, exact-artifact test profile below.
 
 ### Limits and comparison controls
 
@@ -169,3 +176,77 @@ untested for this variant.** There is still no fresh KSU failure log. No
 evidence yet establishes optional SELinux-hide as the bootloop cause; the
 successful no-hide compile does not establish a fix. SELinux enforcement and
 Samsung safeguards must not be disabled to force a result.
+
+## Separate owner-requested Odin boot test
+
+After reviewing the research result, the owner explicitly asked whether this
+variant could be tested. The local packager now provides the distinct mode
+`kernelsu-no-hide-test`, requiring all of the following:
+
+- `--accept-experimental-no-hide-test` plus new, separate TAR/report paths.
+- The exact Image and System.map hashes in the table above, and the unchanged
+  original source/linked JSON reports from run `44692312623`.
+- Source report SHA256
+  `5937d3014e69cf11ba155cf27ada87e172a6cfd0c2cfe19ff7c53406314658fa`
+  and linked report SHA256
+  `fcd1490aa962ee579aff64c8e355ae67af303fbc9f0fa9f83d85e13141be14d4`.
+- Actual embedded IKCONFIG agreement, all existing config/provenance gates,
+  ten raw linked call edges, 42 trace markers, preinit ELF validation,
+  12,530 reconstructed export matches, OEM certificate and stock boot checks.
+- Clean, exact AOSP tool commits: mkbootimg
+  `028bdc06ce87ab1ee23204feb5cd5ee406484618` and avbtool
+  `386fb90492db3bd6bc484a579bcde5b43a2a0292`.
+
+Both known physically failed Image hashes are rejected before any mode or
+acceptance flag can be considered. Ordinary modes still reject this diagnostic
+Image, including when the new acceptance flag is present. The research JSON
+reports are not rewritten: `FLASH_ALLOWED=NO` and the original diagnostic
+warning remain intact. They are compilation/isolation evidence, not runtime
+release certificates. Only the separate local package report records scope
+`OWNER_REQUESTED_EXPERIMENTAL_BOOT_TEST`, with readiness
+`UNVERIFIED_EXPERIMENTAL_ONLY` and physical boot/root/module loading `NOT_TESTED`.
+
+**191/191 local tests pass, including 39 packager tests.** Independent read-only
+review and a separate full-suite run found no blocker in the narrowed profile.
+Negative tests cover missing/changed inputs, false acknowledgement, both failed
+Images in every mode, and continued mandatory ordinary validation gates. The
+post-change GitHub self-test result will be recorded separately; these local
+results must not be represented as a new kernel compile.
+
+The new TAR and JSON report were each generated twice from the original stock
+boot and the already-compiled Image. Both complete TARs and both reports are
+byte-identical. **No kernel source or kernel binary changed during packaging.**
+The original stock boot is verified against SHA256
+`06888f51722264ef33f2299e6ccaefab9e6e0c7a96d51c5c8a74cfeecd265655`.
+
+| Local test-package identity | SHA256 |
+| --- | --- |
+| `RootS6Lite_SM-P613_CYE1_KSU_NOHIDE_BOOT_TEST.tar` (100,669,440 bytes) | `d449365f3f78c8014aaaeccfc0ed78bf25b4af1c8216018334845719a1aeb31c` |
+| New inner `boot.img` (100,663,296 bytes) | `aa149f0386146ae7714909075f39161d15c689338be2daaa75340c652e47627a` |
+| `RootS6Lite_NOHIDE_package_report.json` | `a1583d492e3b67fb2273c2f34b67c0acbadf580c2390a80b2777ab18c96b8a62` |
+| Unchanged, previously booted `RootS6Lite_SM-P613_CYE1_BASELINE_ROLLBACK.tar` | `e98e22019d02e2a21e9f14db8be4466e7e5ab97c7924e49d40a64e380e2a98b3` |
+
+The package contains only `boot.img`; Android boot header v2, 4096-byte pages,
+stock commandline, original 725,007-byte ramdisk and **full 442,884-byte stock
+DTB region** are retained. This includes the additional 173-byte FDT, not just
+the shorter compiled base DTB. No DTBO partition is replaced, and the unresolved
+libfdt overlay smoke-test is not represented as passing. Stock ramdisk SHA256
+is `bcd59bb1748dbf0e1c341fd9c7c20c8790636aaded2d7397ae7b09aa8313bb45`;
+full stock DTB SHA256 is
+`60f36c9fca07fb819b34af5f60bc3b2628a74ffd873605a307a7139844d71dc1`.
+
+The existing 528-byte Samsung signer trailer is preserved, **not re-signed**.
+AVB is internally consistent but algorithm **NONE / unsigned**. Verification
+of that hash footer is not OEM authentication or proof that a Samsung device
+will accept or boot the Image. The rollback TAR matches the previously booted
+baseline byte-for-byte; it is not a new rebuild.
+
+Owner test scope: SM-P613 / P613XXS8CYE1 only; Odin AP only, other fields empty,
+no PIT/Re-Partition/Nand Erase, no added vbmeta image and no bootloader relock.
+Keep a matching full stock firmware and working Download Mode available.
+Remove the magnetic cover. First assess Android startup and ADB only; do not
+enable SULOG, extra KSU features or modules during this isolation test. If it
+loops again, preserve available evidence once and restore the known baseline
+without treating a factory reset as the first remedy. Recovery `unauthorized`
+is still not a working log-export path. OEM boot binaries and private keys are
+not committed to the public repository.

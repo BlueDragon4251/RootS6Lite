@@ -71,7 +71,10 @@ filtering but does not prevent installation. The separate research branch
 variant in successful [run 44692312623](https://github.com/BlueDragon4251/RootS6Lite/actions/runs/44692312623);
 the independent artifact comparisons and remaining limits are recorded in
 the [diagnostic report](CYE1_NO_SELINUX_HIDE_DIAGNOSTIC_2026-11-20.md).
-It is not an Odin release. The subsystem is **not established as the failure cause**.
+It is not a general Odin release. A later explicit owner request is handled by
+a separate exact-artifact **experimental boot-test** profile in that report;
+both failed Images documented here remain blocked. The subsystem is **not
+established as the failure cause**.
 
 Useful actual-log landmarks are `ROOTS6_KSU_TRACE: init.entry`, the paired
 `init.before/after.prepare_creds` and `init.before/after.ksu_lsm_hook_init`,
