@@ -5,12 +5,14 @@
 Compile and static verification passed. The original CI artifact remains
 research-only and contains no Odin package. Following the owner's explicit
 request to test, a separate, exact-artifact local Odin **boot-test package**
-has been prepared as documented below. **Physical boot and root remain
-unverified; this is not a confirmed bootloop fix.** This branch
+has been prepared as documented below. **The owner now reports a successful
+Android boot with the no-hide candidate. Root and runtime module compatibility
+remain unverified; the precise earlier bootloop cause is not established.** This branch
 starts from `f2552a943066bb5dc5bf9b857cb77e776bc152f7`, which records both
 owner-reported KSU boot failures and rejects both failed Image hashes. The
-non-KSU baseline previously booted. The owner has now flashed back again;
-Android startup after this specific rollback is not yet confirmed.
+non-KSU baseline previously booted. After the latest KSU5 failure the owner
+reported flashing back; the later no-hide Android-start confirmation is
+recorded separately below and does not retroactively identify that rollback.
 
 The current incident has no authenticated KSU crash trace. Stock Recovery ADB
 was `unauthorized`. An unavailable log does not identify a panic, failed hook
@@ -170,12 +172,14 @@ the device DTBO is 184,681 bytes, SHA256
 The build log records 16 warnings and no compiler/linker fatal error; warnings
 are not represented as a warning-free build.
 
-Compilation, static isolation and the above comparisons passed. **Physical
-boot, root authorization and actual Samsung OEM-module loading remain
-untested for this variant.** There is still no fresh KSU failure log. No
-evidence yet establishes optional SELinux-hide as the bootloop cause; the
-successful no-hide compile does not establish a fix. SELinux enforcement and
-Samsung safeguards must not be disabled to force a result.
+Compilation, static isolation and the above comparisons passed. At the research
+and packaging stages, physical boot, root authorization and actual Samsung
+OEM-module loading were untested. The later owner report below confirms the
+first Android start, not the remaining runtime checks. There is still no fresh
+KSU failure log. The successful comparison supports the optional-hide
+hypothesis but does not establish the exact fault or eliminate other build
+differences. SELinux enforcement and Samsung safeguards must not be disabled
+to force a result.
 
 ## Separate owner-requested Odin boot test
 
@@ -204,7 +208,9 @@ reports are not rewritten: `FLASH_ALLOWED=NO` and the original diagnostic
 warning remain intact. They are compilation/isolation evidence, not runtime
 release certificates. Only the separate local package report records scope
 `OWNER_REQUESTED_EXPERIMENTAL_BOOT_TEST`, with readiness
-`UNVERIFIED_EXPERIMENTAL_ONLY` and physical boot/root/module loading `NOT_TESTED`.
+`UNVERIFIED_EXPERIMENTAL_ONLY` and, at its creation time, physical boot/root/module
+loading `NOT_TESTED`. These original reports are immutable build-time evidence;
+later device results belong to the separate runtime record below.
 
 **191/191 local tests pass, including 39 packager tests.** Independent read-only
 review and a separate full-suite run found no blocker in the narrowed profile.
@@ -273,3 +279,46 @@ loops again, preserve available evidence once and restore the known baseline
 without treating a factory reset as the first remedy. Recovery `unauthorized`
 is still not a working log-export path. OEM boot binaries and private keys are
 not committed to the public repository.
+
+## Device result — first no-hide Android boot, 2026-11-20
+
+After receiving the exact no-hide boot-test package above, the owner reports:
+
+> es hat gebootet und bin in android drinnen mit ksu nohide
+
+Record **first physical Android boot PASS (owner-reported)** for this no-hide
+test. The report associates the run with the handed-off candidate; no new
+device-side image hash, console capture or full runtime log was supplied.
+Do not describe this as an independently measured on-device binary identity.
+The candidate remains Image SHA256
+`8765677928ad2011b1b714a17e347956f85d359130b5e73126286bbdfe9a876d`,
+boot SHA256 `aa149f0386146ae7714909075f39161d15c689338be2daaa75340c652e47627a`,
+and TAR SHA256 `d449365f3f78c8014aaaeccfc0ed78bf25b4af1c8216018334845719a1aeb31c`.
+
+| Runtime question | Current evidence |
+| --- | --- |
+| Android starts with the no-hide candidate | PASS, owner-reported first boot |
+| KernelSU Next manager recognizes the kernel | NOT YET VERIFIED |
+| An explicitly authorized app obtains UID 0 | NOT YET VERIFIED |
+| Live SELinux enforcing state on this boot | NOT YET MEASURED; build config remains enforcing-capable |
+| OEM-module loading and Wi-Fi/Bluetooth/audio/suspend behavior | NOT YET VALIDATED |
+| Repeat-boot reliability and longer-term stability | NOT YET VALIDATED |
+
+This is a meaningful runtime improvement over both earlier failed KSU
+candidates. It strengthens the optional-hide isolation hypothesis, but the
+hosted-runner and generated-certificate differences above prevent a strict
+single-variable causal claim. A successful boot also does not prove every
+manual hook, manager API, permission path or feature works correctly.
+
+Freeze the successful candidate while collecting the next evidence. Do not
+flash another variant, reintroduce hide, enable SULOG, change enforcement or
+install modules for this first verification. The next low-impact step is to
+open the KernelSU Next manager and record its main status, reported kernel
+version and installed manager version. A manager status alone is not a UID 0
+authorization test. Follow with a controlled, explicitly authorized root
+check only after manager compatibility and recognition have been confirmed.
+
+The two earlier failed Image hashes remain rejected, the PR stays draft and
+the normal packaging gates remain unchanged. No kernel source, Image, TAR,
+original CI manifest or historical package report is changed by recording
+this user observation.

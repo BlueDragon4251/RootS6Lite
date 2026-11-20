@@ -1,6 +1,16 @@
 # Experimental CYE1 + KernelSU Next boot images — 2026-11-19
 
-## Current status — 2026-11-20: KSU5 / trace also FAILED on device
+## Latest result — 2026-11-20: separate no-hide candidate starts Android
+
+After the experimental no-hide handoff, the owner reports Android started with
+`ksu nohide`. Record **first boot PASS (owner-reported)** for that separate
+candidate, not for either failed Image below. Its exact identities, evidence
+limits and next manager-recognition check are recorded in the
+[no-hide diagnostic report](CYE1_NO_SELINUX_HIDE_DIAGNOSTIC_2026-11-20.md#device-result--first-no-hide-android-boot-2026-11-20).
+Root authorization, actual OEM-module loading and repeat-boot reliability are
+not yet verified. No new kernel or package is needed just to record this result.
+
+## Earlier candidate status — 2026-11-20: KSU5 / trace also FAILED on device
 
 The owner reports **"wieder bootloop mit ksu"** after the KSU5/trace handoff.
 This supersedes the previous **device untested** status for that candidate.
