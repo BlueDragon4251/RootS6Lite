@@ -68,11 +68,18 @@ override is required.
 The official [v3.4.2 release APK](https://github.com/KernelSU-Next/KernelSU-Next/releases/download/v3.4.2/KernelSU_Next_v3.4.2_33355-release.apk)
 was separately downloaded and cryptographically verified. Its APK SHA256 is
 `774a5511f7034a4930e881114e202319cbdc34c5aaaa5c7c6b6d2902364e4c58`.
-Both packages have the same package ID and **byteidentical signer certificate**;
-versionCode increases **33355 to 33554**. The official installed app can therefore
-be updated in place without first uninstalling it. Actual installation on the
-device remains to be observed; an unexpected installer error is a stop condition,
-not a reason to remove the app or bypass signing checks.
+Both packages have the same package ID and **byte-identical signer certificate**,
+but the versionCode goes **down from 33355 (installed stable) to 33554
+(candidate)**. This is a **one-step downgrade**, not an update. Ordinary Android
+package installation is expected to reject an in-place downgrade, even with the
+same signing certificate. Therefore **do not hand off or attempt the 33554 APK
+as a normal in-place update**. No installation failure has been observed on the
+device; this blocker follows from the independently audited manifest versions.
+Do not uninstall the existing manager, bypass downgrade safeguards, or use
+`adb install -d` to force this candidate. A normal update requires an official,
+correctly signed UAPI-6 manager with an acceptable versionCode (preferably
+higher than 33355), whose manifest, signature, UAPI and side effects are
+validated independently before installation.
 
 The ARM64 JNI symbol `Java_com_rifsxd_ksunext_Natives_getManagerUAPIVersion`
 is eight bytes at virtual address/file offset `0x14ec` in the real
@@ -130,10 +137,12 @@ calling context; it is not evidence that global kernel seccomp is disabled.
 The actual config retains `CONFIG_SECCOMP=y` and `CONFIG_SECCOMP_FILTER=y`.
 No protection should be disabled to remove either display.
 
-User handoff: install the verified official development APK **as an update**
-over the existing manager, then open it. Do not flash anything, uninstall KSU,
-install meta-modules, enable features, or restart merely to fix the API banner.
-Check the complete home screen for manager **33554-6**, the same legacy kernel
-**33327-6**, no UAPI warning and no root-error card. A controlled, explicitly
-authorized UID-0 test follows separately. Device root and updated-manager
-functionality are still **NOT TESTED** at this handoff.
+User handoff: **do not install the audited 33554 UAPI-6 candidate over the
+installed 33355 manager**; its lower versionCode blocks the ordinary update.
+Keep the booting no-hide kernel and installed manager unchanged. No Odin flash,
+manager uninstall, forced APK downgrade, extra modules or feature toggles.
+Once an official UAPI-6 APK with a compatible versionCode and the expected
+signer is independently validated, test its in-place update and check for a
+new manager UAPI-6 status without changing the kernel. A controlled, explicitly
+authorized UID-0 test follows separately. Root and updated-manager operation
+remain **NOT TESTED**.
