@@ -5,7 +5,9 @@
 The owner reports **"wieder bootloop mit ksu"** after the KSU5/trace handoff.
 This supersedes the previous **device untested** status for that candidate.
 Record **physical boot FAILED (owner-reported)**, root **NOT ESTABLISHED**.
-No new crash log, restart timing or recovery outcome has yet been supplied.
+Stock Recovery was reachable but ADB reported `unauthorized`; no new crash log
+or restart timing was obtained. The owner subsequently reports having flashed
+back. Android startup after this particular rollback is not yet confirmed.
 The exact failure stage and cause remain unknown; do not invent a kernel panic.
 
 **Do not flash or repackage the KSU5/trace Image again:**
@@ -44,8 +46,8 @@ candidate path, **not current accessibility or that its contents are fresh**.
   Its earlier `max-fetch-size` query was unsupported. Do not invent OEM commands.
 - Restore the known-booted **baseline rollback TAR** via Odin AP in Download
   Mode if logs cannot be obtained promptly. No factory reset as a first step.
-  Keep full matching stock firmware as the fallback. The current restoration
-  has not yet been reported, even though baseline recovery succeeded previously.
+  Keep full matching stock firmware as the fallback. The owner now reports
+  flashing back; successful Android startup after this rollback is still open.
 
 Green CI remains valid compilation/static evidence, not a successful boot.
 The 42 marker strings in the Image do not tell us which marker executed on the
@@ -60,12 +62,14 @@ paths also install these hooks. Thus `init.after.ksu_selinux_hide_init` only
 records return from thread creation; it does not prove that worker completed.
 The existing 42 markers do not individually enclose that asynchronous worker.
 
-This is a concrete, isolated future comparison candidate: omit the optional
+This is a concrete, isolated comparison candidate: omit the optional
 hide subsystem's thread and installation entry points in an explicitly named
 diagnostic profile, **not** SELinux enforcement or Samsung protection checks.
 Merely setting its feature boolean false is not equivalent: the setter changes
-filtering but does not prevent installation. No such variant has yet been
-built or flashed, and the subsystem is **not established as the failure cause**.
+filtering but does not prevent installation. The separate research branch
+`agent/ksu-no-selinux-hide-diag` prepares that variant; its actual build and
+verification results are recorded in the [diagnostic report](CYE1_NO_SELINUX_HIDE_DIAGNOSTIC_2026-11-20.md).
+It is not an Odin release. The subsystem is **not established as the failure cause**.
 
 Useful actual-log landmarks are `ROOTS6_KSU_TRACE: init.entry`, the paired
 `init.before/after.prepare_creds` and `init.before/after.ksu_lsm_hook_init`,

@@ -47,6 +47,9 @@ BOOTED_BASELINE_IMAGE_SHA256 = "5609cb6faa2a6f07f4a0d0a2205f0d06fe696697cb6efc45
 STOCK_COMPATIBLE_SYMVERS_SHA256 = "2c8e251d7c1c4c6f617f4f68808f355db3fc90b1126ffc24cd73c734eccb497e"
 KSU_CONFIG_SHA256 = "d1261c855df36e575bf12219c6831955f75d76f4706659d9c9245f0dbaf86416"
 KSU_UPSTREAM_REVISION = "e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a"
+# This isolated profile changes optional feature behavior. It must not silently
+# pass the normal KSU package gates just because config/main hooks are identical.
+NONFLASHABLE_KSU_DIAGNOSTIC_MARKER = b"ROOTS6_KSU_NO_SELINUX_HIDE"
 # Owner-reported physical boot failures override all successful static gates.
 # Keep both failures: adding tracing/the fifth hook did not establish bootability.
 KNOWN_FAILED_KSU_IMAGE_SHA256S = frozenset({
@@ -256,10 +259,16 @@ def verify_ksu_trace(manifest: dict, image: bytes, config: str) -> dict:
     return trace
 
 
+def reject_nonflashable_diagnostic(image: bytes) -> None:
+    if NONFLASHABLE_KSU_DIAGNOSTIC_MARKER in image:
+        raise ValueError("Nonflashable KernelSU no-SELinux-hide diagnostic Image: research only, do not package")
+
+
 def verify_ksu_inputs(args, image: bytes) -> dict:
     image_sha256 = sha256(image)
     if image_sha256 in KNOWN_FAILED_KSU_IMAGE_SHA256S:
         raise ValueError(f"Known failed on-device KernelSU Image {image_sha256}: do not repackage or reflash")
+    reject_nonflashable_diagnostic(image)
     required = ("ksu_config", "system_map", "baseline_image", "ksu_provenance", "ksu_hooks_manifest", "ksu_trace_manifest")
     if any(getattr(args, field, None) is None for field in required):
         raise ValueError("KernelSU mode requires config, System.map, booted baseline, upstream, hook and trace manifests")
@@ -335,6 +344,7 @@ def main() -> None:
     if len(stock) != PARTITION_SIZE or sha256(stock) != STOCK_BOOT_SHA256:
         raise ValueError("Stock boot does not match exact P613XXS8CYE1 reference")
     image = args.kernel_image.read_bytes()
+    reject_nonflashable_diagnostic(image)  # All modes, before any output is written.
     if sha256(image) != args.expected_kernel_sha256.lower() or len(image) < 45000000 or image[56:60] != b"ARMd":
         raise ValueError("Unexpected compiled ARM64 Image (size, PE header, or digest)")
     if STOCK_KERNELRELEASE.encode() not in image:

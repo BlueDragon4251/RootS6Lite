@@ -13,6 +13,8 @@ from package_cye1_baseline_odintar import (
     stock_metadata, verify_ksu_inputs, verify_ksu_hook_manifest,
     verify_ksu_raw_call_edges, verify_ksu_trace, pinned_tool,
     KNOWN_FAILED_KSU_IMAGE_SHA256S, KSU_UPSTREAM_REVISION,
+    NONFLASHABLE_KSU_DIAGNOSTIC_MARKER,
+    reject_nonflashable_diagnostic,
 )
 from instrument_kernelsu_boot_trace import INIT_PATH, RUNTIME_PATH, REQUIRED_CONFIG, marker_counts
 from verify_kernelsu_call_edges import SAMSUNG_CYE1_CALLERS
@@ -123,6 +125,18 @@ Algorithm:                SHA256_RSA4096
         with patch("package_cye1_baseline_odintar.sha256", return_value="0" * 64):
             with self.assertRaisesRegex(ValueError, "KernelSU mode requires"):
                 verify_ksu_inputs(SimpleNamespace(), b"fixture")
+
+    def test_no_hide_diagnostic_is_rejected_before_normal_ksu_gates(self):
+        # Assert actual sentinel bytes, not just the imported constant, so a
+        # drift between the diagnostic generator and packager fails the test.
+        self.assertEqual(NONFLASHABLE_KSU_DIAGNOSTIC_MARKER, b"ROOTS6_KSU_NO_SELINUX_HIDE")
+        with self.assertRaisesRegex(ValueError, "Nonflashable KernelSU no-SELinux-hide"):
+            verify_ksu_inputs(SimpleNamespace(), b"KernelSU\0ROOTS6_KSU_NO_SELINUX_HIDE\0")
+
+    def test_diagnostic_rejection_does_not_depend_on_ksu_mode_or_generic_ksu_string(self):
+        with self.assertRaisesRegex(ValueError, "Nonflashable KernelSU no-SELinux-hide"):
+            reject_nonflashable_diagnostic(b"ROOTS6_KSU_NO_SELINUX_HIDE\0")
+        reject_nonflashable_diagnostic(b"ordinary baseline fixture")
 
     def test_five_hook_manifest_requires_reboot_and_unmodified_detector(self):
         manifest = HOOK_MANIFEST
