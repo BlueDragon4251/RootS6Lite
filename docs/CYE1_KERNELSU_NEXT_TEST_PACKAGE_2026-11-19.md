@@ -1,6 +1,84 @@
 # Experimental CYE1 + KernelSU Next boot images — 2026-11-19
 
-## Current separate candidate: KSU5 / trace — static checks passed, device untested
+## Current status — 2026-11-20: KSU5 / trace also FAILED on device
+
+The owner reports **"wieder bootloop mit ksu"** after the KSU5/trace handoff.
+This supersedes the previous **device untested** status for that candidate.
+Record **physical boot FAILED (owner-reported)**, root **NOT ESTABLISHED**.
+No new crash log, restart timing or recovery outcome has yet been supplied.
+The exact failure stage and cause remain unknown; do not invent a kernel panic.
+
+**Do not flash or repackage the KSU5/trace Image again:**
+
+- Image SHA256: `83f2e337b2563b4e0414ec4d59e374f6d345e199b17df43487ebf44cbe986c11`.
+- Inner boot.img SHA256: `1785fbfcce0f9a38f7869b23a7a4fda12c61eff077d142aa3d1c3c4828f26a1b`.
+- Odin TAR SHA256: `f1437f3471a9ca0017261dfd5917992a7ddc77b07a38fc64ec00774777aa5000`.
+
+The guarded packager now rejects this Image as well as the earlier failed
+legacy Image **before reading other provenance or accepting static checks**.
+Regression tests cover both exact Image hashes. The kernel itself is not
+changed by this incident-recording/denylist commit; no replacement KSU flash
+package is being released from it.
+
+The source insertion and five actual linked hook types were already verified.
+The repeated failure means the fifth-hook fix was **not sufficient**. It does
+not prove that all hook arguments, initialization paths or Samsung interactions
+are correct. `KPROBES=n` remains unchanged. Do not disable SELinux, OEM module
+signature enforcement or Samsung protection features to manufacture success.
+
+### Evidence preservation and recovery
+
+If the stock Recovery is reachable, enter it once and avoid repeated normal
+boot attempts, factory reset, cache wipe or choosing ADB sideload as if it were
+a shell. Earlier Samsung Recovery logs show a copy from `/proc/last_kmsg` to
+`/cache/recovery/last_kernel` (previously 2,097,136 bytes). This establishes a
+candidate path, **not current accessibility or that its contents are fresh**.
+
+- Check `adb devices` once when at a PC. Only a normal `recovery`/`device`
+  transport justifies attempting to pull that exact file. `sideload`, an empty
+  list, `offline` or `unauthorized` does not provide a normal file-export path.
+- If pull is denied or the file is missing, stop. No `adb root`, permission or
+  SELinux changes are required or promised. A recovery log viewer, if present,
+  may provide photographed evidence; Samsung's available files are unverified.
+- No working direct UEFI Fastboot log export is established for this device.
+  Its earlier `max-fetch-size` query was unsupported. Do not invent OEM commands.
+- Restore the known-booted **baseline rollback TAR** via Odin AP in Download
+  Mode if logs cannot be obtained promptly. No factory reset as a first step.
+  Keep full matching stock firmware as the fallback. The current restoration
+  has not yet been reported, even though baseline recovery succeeded previously.
+
+Green CI remains valid compilation/static evidence, not a successful boot.
+The 42 marker strings in the Image do not tell us which marker executed on the
+device; new failed-boot evidence is needed to localize this incident.
+
+### Source-based next diagnostic hypothesis, not a diagnosis
+
+The exact pinned [optional SELinux-hide subsystem](https://github.com/KernelSU-Next/KernelSU-Next/blob/e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a/kernel/feature/selinux_hide.c)
+starts an asynchronous kernel thread and installs file-operation hooks by
+writing through a `vmap(..., PAGE_KERNEL)` alias. Second-stage and post-fs-data
+paths also install these hooks. Thus `init.after.ksu_selinux_hide_init` only
+records return from thread creation; it does not prove that worker completed.
+The existing 42 markers do not individually enclose that asynchronous worker.
+
+This is a concrete, isolated future comparison candidate: omit the optional
+hide subsystem's thread and installation entry points in an explicitly named
+diagnostic profile, **not** SELinux enforcement or Samsung protection checks.
+Merely setting its feature boolean false is not equivalent: the setter changes
+filtering but does not prevent installation. No such variant has yet been
+built or flashed, and the subsystem is **not established as the failure cause**.
+
+Useful actual-log landmarks are `ROOTS6_KSU_TRACE: init.entry`, the paired
+`init.before/after.prepare_creds` and `init.before/after.ksu_lsm_hook_init`,
+`init.complete`, then the `second_stage.before/after` markers around
+`ksu_selinux_hide_handle_second_stage`, `apply_kernelsu_rules`, and
+`setup_ksu_cred`. An `after` marker only proves return, not semantic success;
+missing markers in incomplete or lost logs do not prove a path was not run.
+
+Local post-incident regression run: **154/154 tests passed**, including
+**25/25 packager tests**. These test the rejection and validation logic, not
+the device boot. Post-commit GitHub CI must be checked separately.
+
+## Historical KSU5 / trace preparation — static checks passed before device test
 
 The owner explicitly requested a new private Odin test package while unable to
 run PC/device commands. The result is a **new experimental boot/diagnostic
@@ -84,8 +162,10 @@ successful kernel-run artifact above, not an unverified new rebuild.
 
 ### Remaining constraints and owner test scope
 
-Physical boot, preinit execution, manager handshake, root authorization and
-original Samsung module loading remain **NOT TESTED** for the new Image. The
+At preparation time, physical boot, preinit execution, manager handshake, root
+authorization and original Samsung module loading were **NOT TESTED**. Physical
+boot has since **FAILED**, as recorded above; the other runtime checks remain
+unestablished. The
 reference is reconstructed, not an original OEM Module.symvers. Clang 10.0.1
 is not proven equivalent to OEM Clang 10.0.7. Standard libfdt still reports
 `FDT_ERR_BADOVERLAY`; the package retains the original complete DTB and does

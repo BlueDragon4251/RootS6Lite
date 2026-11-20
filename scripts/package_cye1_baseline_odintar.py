@@ -47,7 +47,12 @@ BOOTED_BASELINE_IMAGE_SHA256 = "5609cb6faa2a6f07f4a0d0a2205f0d06fe696697cb6efc45
 STOCK_COMPATIBLE_SYMVERS_SHA256 = "2c8e251d7c1c4c6f617f4f68808f355db3fc90b1126ffc24cd73c734eccb497e"
 KSU_CONFIG_SHA256 = "d1261c855df36e575bf12219c6831955f75d76f4706659d9c9245f0dbaf86416"
 KSU_UPSTREAM_REVISION = "e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a"
-KNOWN_FAILED_KSU_IMAGE_SHA256 = "b3d551884c1fd95ed5632deac3691bbe343f30a3dfb91833c48c57c12ba418a7"
+# Owner-reported physical boot failures override all successful static gates.
+# Keep both failures: adding tracing/the fifth hook did not establish bootability.
+KNOWN_FAILED_KSU_IMAGE_SHA256S = frozenset({
+    "b3d551884c1fd95ed5632deac3691bbe343f30a3dfb91833c48c57c12ba418a7",  # 2026-11-19 legacy
+    "83f2e337b2563b4e0414ec4d59e374f6d345e199b17df43487ebf44cbe986c11",  # 2026-11-20 KSU5/trace
+})
 
 
 def sha256(data: bytes) -> str:
@@ -252,8 +257,9 @@ def verify_ksu_trace(manifest: dict, image: bytes, config: str) -> dict:
 
 
 def verify_ksu_inputs(args, image: bytes) -> dict:
-    if sha256(image) == KNOWN_FAILED_KSU_IMAGE_SHA256:
-        raise ValueError("Known failed on-device KernelSU Image: do not repackage or reflash")
+    image_sha256 = sha256(image)
+    if image_sha256 in KNOWN_FAILED_KSU_IMAGE_SHA256S:
+        raise ValueError(f"Known failed on-device KernelSU Image {image_sha256}: do not repackage or reflash")
     required = ("ksu_config", "system_map", "baseline_image", "ksu_provenance", "ksu_hooks_manifest", "ksu_trace_manifest")
     if any(getattr(args, field, None) is None for field in required):
         raise ValueError("KernelSU mode requires config, System.map, booted baseline, upstream, hook and trace manifests")

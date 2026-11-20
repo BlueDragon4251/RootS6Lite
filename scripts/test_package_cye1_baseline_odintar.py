@@ -12,7 +12,7 @@ from package_cye1_baseline_odintar import (
     aligned, boot_v2_layout, parse_avb_info, replace_kernel_arg,
     stock_metadata, verify_ksu_inputs, verify_ksu_hook_manifest,
     verify_ksu_raw_call_edges, verify_ksu_trace, pinned_tool,
-    KNOWN_FAILED_KSU_IMAGE_SHA256, KSU_UPSTREAM_REVISION,
+    KNOWN_FAILED_KSU_IMAGE_SHA256S, KSU_UPSTREAM_REVISION,
 )
 from instrument_kernelsu_boot_trace import INIT_PATH, RUNTIME_PATH, REQUIRED_CONFIG, marker_counts
 from verify_kernelsu_call_edges import SAMSUNG_CYE1_CALLERS
@@ -105,9 +105,23 @@ Algorithm:                SHA256_RSA4096
         with self.assertRaisesRegex(ValueError, "KernelSU mode requires"):
             verify_ksu_inputs(args, b"KernelSU")
 
-    def test_rejects_known_failed_ksu_image_before_reading_other_inputs(self):
-        with patch("package_cye1_baseline_odintar.sha256", return_value=KNOWN_FAILED_KSU_IMAGE_SHA256):
-            with self.assertRaisesRegex(ValueError, "Known failed on-device"):
+    def test_rejects_both_device_failed_ksu_images_before_reading_other_inputs(self):
+        # Explicit identities stop a future edit from accidentally dropping the
+        # first failure while adding another, or using a TAR hash as Image hash.
+        failed_images = {
+            "b3d551884c1fd95ed5632deac3691bbe343f30a3dfb91833c48c57c12ba418a7",
+            "83f2e337b2563b4e0414ec4d59e374f6d345e199b17df43487ebf44cbe986c11",
+        }
+        self.assertTrue(failed_images.issubset(KNOWN_FAILED_KSU_IMAGE_SHA256S))
+        for digest in failed_images:
+            with self.subTest(image_sha256=digest):
+                with patch("package_cye1_baseline_odintar.sha256", return_value=digest):
+                    with self.assertRaisesRegex(ValueError, "Known failed on-device.*" + digest):
+                        verify_ksu_inputs(SimpleNamespace(), b"fixture")
+
+    def test_unlisted_image_still_requires_provenance(self):
+        with patch("package_cye1_baseline_odintar.sha256", return_value="0" * 64):
+            with self.assertRaisesRegex(ValueError, "KernelSU mode requires"):
                 verify_ksu_inputs(SimpleNamespace(), b"fixture")
 
     def test_five_hook_manifest_requires_reboot_and_unmodified_detector(self):
