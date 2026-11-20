@@ -1,0 +1,231 @@
+name: Samsung P613XXS8CYE1 source-equivalent research compile (NO FLASH)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-cye1-experimental-compile.yml'
+      - 'scripts/extract_samsung_cye1_source.py'
+      - 'scripts/test_extract_samsung_cye1_source.py'
+      - 'scripts/compile_samsung_baseline.sh'
+      - 'assets/p613-cye1-stock-module-signing-public.pem'
+      - 'scripts/compare_compiled_cye1_abi.py'
+      - 'scripts/test_compare_compiled_cye1_abi.py'
+      - 'scripts/compare_full_cye1_export_abi.py'
+      - 'scripts/reconstruct_cye1_export_reference.py'
+      - 'scripts/test_full_cye1_export_abi.py'
+      - 'scripts/integrate_kernelsu_next_research.py'
+      - 'scripts/test_integrate_kernelsu_next_research.py'
+      - 'scripts/instrument_kernelsu_boot_trace.py'
+      - 'scripts/test_instrument_kernelsu_boot_trace.py'
+      - 'scripts/verify_kernelsu_research_symbols.py'
+      - 'scripts/test_verify_kernelsu_research_symbols.py'
+      - 'scripts/verify_kernelsu_call_edges.py'
+      - 'scripts/test_verify_kernelsu_call_edges.py'
+      - 'docs/CYE1_STOCK_EXPORT_ABI.json'
+      - 'docs/CYE1_RECONSTRUCTED_STOCK_EXPORTS.tsv'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Baseline first; optional KernelSU Next legacy manual-hook research'
+        required: true
+        type: choice
+        options: [baseline, kernelsu]
+        default: baseline
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # This workflow is deliberately not on main yet, so GitHub's UI does
+      # not expose workflow_dispatch. An explicit commit-message marker on
+      # the research branch allows a one-off KSU push-run without making
+      # every baseline build root-enabled or duplicating the workflow.
+      CYE1_MODE: ${{ inputs.mode || (contains(github.event.head_commit.message, '[cye1-kernelsu]') && 'kernelsu' || 'baseline') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            llvm-14 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            g++-aarch64-linux-gnu libssl-dev libelf-dev bc bison flex \
+            build-essential python3 python3-distutils 2to3 file cpio \
+            rsync device-tree-compiler libncurses-dev kmod
+
+      - name: Run CYE1 parser and comparison self-tests
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts -p 'test_extract_samsung_cye1_source.py' -v
+          python3 -m unittest discover -s scripts -p 'test_compare_compiled_cye1_abi.py' -v
+          python3 -m unittest discover -s scripts -p 'test_full_cye1_export_abi.py' -v
+          python3 -m unittest discover -s scripts -p 'test_integrate_kernelsu_next_research.py' -v
+          python3 -m unittest discover -s scripts -p 'test_instrument_kernelsu_boot_trace.py' -v
+          python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_research_symbols.py' -v
+          python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_call_edges.py' -v
+          python3 -m unittest discover -s scripts -p 'test_verify_kernelsu_preinit_elf.py' -v
+
+      - name: Download and verify Samsung official 2025 base and exact CYE1 supplement
+        run: |
+          set -euo pipefail
+          mkdir -p _download _evidence
+          gh release download source-P613XXU4CWL1 \
+            --repo "$GITHUB_REPOSITORY" --pattern SM-P619.zip --dir _download
+          echo 'e3e144de155e5d82477b83c5642146fefb1a8af272061ec2a6b4532a6a03234f  _download/SM-P619.zip' | sha256sum -c -
+          python3 scripts/extract_samsung_cye1_source.py \
+            --bundle _download/SM-P619.zip \
+            --kernel-out _samsung/kernel \
+            --report _evidence/source-extraction.json
+          # Only the transient ZIP copy is removed, never the GitHub release.
+          rm _download/SM-P619.zip
+          df -h .
+
+      - name: Fetch and verify pinned AOSP Android GCC 4.9 linker
+        run: |
+          set -euo pipefail
+          readonly REPO='https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9'
+          readonly BRANCH='android-msm-coral-4.14-android12-qpr1'
+          readonly COMMIT='606f80986096476912e04e5c2913685a8f2c3b65'
+          readonly LD_SHA='2a663de4ce3d702fe3f2a0de48cac366be676f850c2f5732d9cc2e4acb9335e2'
+          git clone --depth 1 --branch "$BRANCH" "$REPO" _toolchains/android-gcc-4.9
+          test "$(git -C _toolchains/android-gcc-4.9 rev-parse HEAD)" = "$COMMIT"
+          echo "$LD_SHA  _toolchains/android-gcc-4.9/bin/aarch64-linux-android-ld.bfd" | sha256sum -c -
+
+      - name: Fetch and verify pinned AOSP Android 11 Clang 10 (NOT Samsung OEM)
+        run: |
+          set -euo pipefail
+          readonly REPO='https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86'
+          readonly TAG='refs/tags/android-11.0.0_r3'
+          readonly COMMIT='252aba16f513a857bc923172f67b0e55e23de35f'
+          readonly DIR='_toolchains/aosp-clang10'
+          mkdir -p "$DIR"
+          git -C "$DIR" init
+          git -C "$DIR" remote add origin "$REPO"
+          git -C "$DIR" sparse-checkout init --cone
+          git -C "$DIR" sparse-checkout set clang-r370808
+          git -C "$DIR" -c protocol.version=2 fetch --depth 1 --filter=blob:none origin "$TAG"
+          test "$(git -C "$DIR" rev-parse FETCH_HEAD^{commit})" = "$COMMIT"
+          git -C "$DIR" checkout --detach "$COMMIT"
+          test "$(git -C "$DIR" rev-parse HEAD)" = "$COMMIT"
+          test "$(head -n 1 "$DIR/clang-r370808/AndroidVersion.txt")" = '10.0.1'
+          "$DIR/clang-r370808/bin/clang" --version | grep -F 'clang version 10.0.1'
+
+      - name: Fetch exact KernelSU Next legacy revision (opt-in research mode)
+        if: env.CYE1_MODE == 'kernelsu'
+        run: |
+          set -euo pipefail
+          readonly KSU_PIN=e5f5ec998de88b9fc43c62cff8f7ae12d3f4800a
+          git init _ksu_next
+          git -C _ksu_next remote add origin https://github.com/KernelSU-Next/KernelSU-Next.git
+          git -C _ksu_next -c protocol.version=2 fetch --depth 1 origin "$KSU_PIN"
+          test "$(git -C _ksu_next rev-parse FETCH_HEAD^{commit})" = "$KSU_PIN"
+          git -C _ksu_next checkout --detach "$KSU_PIN"
+          test "$(git -C _ksu_next rev-parse HEAD)" = "$KSU_PIN"
+          test -f _ksu_next/kernel/Kbuild
+
+      - name: Compile CYE1 kernel, board trees and signed research modules (NEVER FLASH)
+        run: |
+          set -euo pipefail
+          export SAMSUNG_SOURCE_PROFILE=official-cye1
+          export SAMSUNG_CYE1_ARCHIVE_VERIFIED=YES
+          export SAMSUNG_COMPILER_PROFILE=aosp-clang10
+          export ANDROID_GCC49_PREFIX="$PWD/_toolchains/android-gcc-4.9/bin/aarch64-linux-android-"
+          export AOSP_CLANG10_BINARY="$PWD/_toolchains/aosp-clang10/clang-r370808/bin/clang"
+          if [[ "$CYE1_MODE" == kernelsu ]]; then
+            export ROOTS6_KSU_RESEARCH=1
+            export ROOTS6_KSU_UPSTREAM_ROOT="$PWD/_ksu_next"
+            export ROOTS6_KSU_BOOT_TRACE=1
+          fi
+          bash scripts/compile_samsung_baseline.sh "$PWD/_samsung/kernel" "$PWD/_out" "$PWD/_evidence"
+
+      - name: Verify linked stock kernel identity and OEM public certificate
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import subprocess
+          cert = Path("assets/p613-cye1-stock-module-signing-public.pem")
+          der = subprocess.run(
+              ["openssl", "x509", "-in", str(cert), "-outform", "DER"],
+              check=True, capture_output=True,
+          ).stdout
+          expected = "ff40a362febb34f98dd1f23a41e8ab4cc9ffbcba9152eee68ee2fbbf007d03b1"
+          assert hashlib.sha256(der).hexdigest() == expected, "Unexpected OEM public cert"
+          image = Path("_out/arch/arm64/boot/Image").read_bytes()
+          assert image.count(der) == 1, "OEM public module signer absent or duplicated in linked Image"
+          release = b"4.14.190-perf-28683246-abP613XXS8CYE1"
+          assert release in image, "Linked kernel lacks exact stock vermagic release"
+          report = "LINKED_STOCK_RELEASE=YES; LINKED_OEM_PUBLIC_SIGNER=YES; REAL_OEM_MODULE_IMPORTS=NOT_YET_TESTED; OEM_PUBLIC_CERT_DER_SHA256=" + expected
+          Path("_evidence/embedded-stock-trust-check.txt").write_text(report)
+          print(report)
+          PY
+
+      - name: Compare compiled CYE1 exports with authenticated OEM CRC deltas
+        run: |
+          set -euo pipefail
+          python3 scripts/compare_compiled_cye1_abi.py \
+            --manifest docs/CYE1_STOCK_EXPORT_ABI.json \
+            --symvers _out/Module.symvers \
+            --report _evidence/cye1-compiled-vs-stock-abi.json | tee _evidence/cye1-crc-summary.txt
+          echo '=== CYE1 CRC parity (partial reference only, NEVER flash approval) ===' >> "$GITHUB_STEP_SUMMARY"
+          cat _evidence/cye1-crc-summary.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compare ALL compiled exports against reconstructed CYE1 stock reference
+        run: |
+          set -euo pipefail
+          python3 scripts/compare_full_cye1_export_abi.py \
+            --manifest docs/CYE1_STOCK_EXPORT_ABI.json \
+            --reference docs/CYE1_RECONSTRUCTED_STOCK_EXPORTS.tsv \
+            --symvers _out/Module.symvers \
+            --report _evidence/cye1-full-reconstructed-export-abi.json | tee _evidence/cye1-full-export-summary.txt
+          echo '=== Full reconstructed export inventory (derived; NOT full module ABI) ===' >> "$GITHUB_STEP_SUMMARY"
+          cat _evidence/cye1-full-export-summary.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check linked KSU preinit ELF when optional research mode is selected
+        if: env.CYE1_MODE == 'kernelsu'
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_kernelsu_preinit_elf.py \
+            --image _out/arch/arm64/boot/Image \
+            --system-map _out/System.map \
+            --report _evidence/ksu-preinit-elf-layout.json
+          echo 'FLASH_ALLOWED=NO'
+
+      - name: Verify actual linked ARM64 BL instructions into manual KSU hooks (research only)
+        if: env.CYE1_MODE == 'kernelsu'
+        run: |
+          set -euo pipefail
+          aarch64-linux-gnu-objdump --version | head -n 1
+          python3 scripts/verify_kernelsu_call_edges.py \
+            --objdump "$(command -v aarch64-linux-gnu-objdump)" \
+            --profile samsung-cye1 \
+            --vmlinux _out/vmlinux \
+            --report _evidence/ksu-linked-call-edges.json | tee _evidence/ksu-linked-call-edges-summary.txt
+          echo 'FLASH_ALLOWED=NO'
+
+      - name: Upload isolated NONFLASHABLE build evidence (no Odin package or private key)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SM-P613-CYE1-${{ env.CYE1_MODE }}-AOSP10-RESEARCH-NOT-FLASHABLE
+          path: |
+            _evidence/
+            _out/.config
+            _out/arch/arm64/boot/Image
+            _out/Module.symvers
+            _out/System.map
+            _out/arch/arm64/boot/dts/**/*.dtb
+            _out/arch/arm64/boot/dts/**/*.dtbo
+            _out/**/*.ko
+            _signed_modules/lib/modules/*/kernel/**/*.ko
+          if-no-files-found: warn
+          retention-days: 14
+

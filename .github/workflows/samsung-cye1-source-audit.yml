@@ -1,0 +1,58 @@
+name: Samsung SM-P613 CYE1 source/ABI surface audit (READ-ONLY, NOT FLASHABLE)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-cye1-source-audit.yml'
+      - 'scripts/audit_samsung_cye1_bundle.py'
+      - 'docs/CYE1_STOCK_EXPORT_ABI.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download official base plus CYE1 supplemental sources from pinned release asset
+        run: |
+          set -euo pipefail
+          mkdir -p _source _evidence
+          gh release download source-P613XXU4CWL1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern SM-P619.zip \
+            --dir _source
+          echo 'e3e144de155e5d82477b83c5642146fefb1a8af272061ec2a6b4532a6a03234f  _source/SM-P619.zip' \
+            | sha256sum -c -
+
+      - name: Verify actual CYE1 source delta and all 21 previously missing OEM export definitions
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_samsung_cye1_bundle.py \
+            --bundle _source/SM-P619.zip \
+            --oem-manifest docs/CYE1_STOCK_EXPORT_ABI.json \
+            --report _evidence/cye1-source-abi-surface.json
+          {
+            echo '### Samsung SM-P613 CYE1 source audit'
+            echo '- Base: official SM-P619 Android 14 kernel, Linux 4.14.190'
+            echo '- Overlay: exact SM-P613 P613XXS8CYE1 defconfig and two audio files'
+            echo '- Original CYE1 stock-only exported symbols found in base source: **21/21**'
+            echo '- CRC parity, OEM compiler compatibility and physical boot: **not tested**'
+            echo '- **FLASH_ALLOWED=NO**. No kernel built or flashed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload JSON evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SM-P613-CYE1-SOURCE-RESEARCH-NOT-FLASHABLE
+          path: _evidence/cye1-source-abi-surface.json
+          if-no-files-found: warn
+          retention-days: 30

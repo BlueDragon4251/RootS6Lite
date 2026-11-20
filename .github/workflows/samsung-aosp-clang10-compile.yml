@@ -1,0 +1,116 @@
+name: Samsung SM-P613 AOSP Clang 10 full stock kernel compile (research ONLY, NOT OEM)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-aosp-clang10-compile.yml'
+      - 'scripts/compile_samsung_baseline.sh'
+      - 'scripts/summarize_samsung_build.py'
+      - 'scripts/test_summarize_samsung_build.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross build tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            llvm-14 gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi g++-aarch64-linux-gnu \
+            libssl-dev libelf-dev bc bison flex build-essential \
+            python3 python3-distutils 2to3 file cpio rsync \
+            device-tree-compiler libncurses-dev kmod
+          echo "=== Compiler tools ==="
+          echo "AOSP Clang 10 will be retrieved from a pinned commit"
+          aarch64-linux-gnu-gcc --version | head -1
+
+      - name: Self-test compiler diagnostic parser
+        run: python3 -m unittest discover -s scripts -p 'test_summarize_samsung_build.py' -v
+
+      - name: Download & cryptographically verify real Samsung OSRC archive
+        run: |
+          set -euo pipefail
+          mkdir -p _download _samsung
+          gh release download source-P613XXU4CWL1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern SM-P613_EUR_14_Opensource.zip \
+            --dir _download
+          python3 scripts/verify_samsung_source.py \
+            --archive _download/SM-P613_EUR_14_Opensource.zip \
+            --workdir _samsung --extract-kernel
+          rm -rf _download _samsung/Kernel.tar.gz
+          df -h .
+
+      - name: Fetch and verify Android GCC 4.9 binutils required by Samsung build recipe
+        run: |
+          set -euo pipefail
+          readonly TOOLCHAIN_REPO='https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9'
+          readonly TOOLCHAIN_BRANCH='android-msm-coral-4.14-android12-qpr1'
+          readonly TOOLCHAIN_COMMIT='606f80986096476912e04e5c2913685a8f2c3b65'
+          readonly LD_BFD_SHA256='2a663de4ce3d702fe3f2a0de48cac366be676f850c2f5732d9cc2e4acb9335e2'
+          git clone --depth 1 --branch "$TOOLCHAIN_BRANCH" "$TOOLCHAIN_REPO" _toolchains/android-gcc-4.9
+          test "$(git -C _toolchains/android-gcc-4.9 rev-parse HEAD)" = "$TOOLCHAIN_COMMIT"
+          echo "$LD_BFD_SHA256  _toolchains/android-gcc-4.9/bin/aarch64-linux-android-ld.bfd" | sha256sum -c -
+          _toolchains/android-gcc-4.9/bin/aarch64-linux-android-ld --version | head -1
+
+      - name: Fetch pinned AOSP Android 11 Clang r370808 (10.0.1; NOT Samsung Qualcomm OEM)
+        run: |
+          set -euo pipefail
+          readonly REPO='https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86'
+          readonly TAG='refs/tags/android-11.0.0_r3'
+          readonly EXPECTED_COMMIT='252aba16f513a857bc923172f67b0e55e23de35f'
+          readonly DIR='_toolchains/aosp-clang10'
+          mkdir -p "$DIR"
+          git -C "$DIR" init
+          git -C "$DIR" remote add origin "$REPO"
+          git -C "$DIR" sparse-checkout init --cone
+          git -C "$DIR" sparse-checkout set clang-r370808
+          git -C "$DIR" -c protocol.version=2 fetch --depth 1 --filter=blob:none origin "$TAG"
+          test "$(git -C "$DIR" rev-parse FETCH_HEAD^{commit})" = "$EXPECTED_COMMIT"
+          git -C "$DIR" checkout --detach "$EXPECTED_COMMIT"
+          test "$(git -C "$DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          readonly CLANG="$DIR/clang-r370808/bin/clang"
+          test -x "$CLANG"
+          test "$(head -n 1 "$DIR/clang-r370808/AndroidVersion.txt")" = '10.0.1'
+          "$CLANG" --version | grep -F 'clang version 10.0.1'
+          printf 'int roots6lite_compiler_smoke(void) { return 0; }\n' | "$CLANG" \
+            -target aarch64-linux-gnu -Werror=unknown-warning-option \
+            -Wno-pragma-pack -gdwarf-4 -x c -c -o /dev/null -
+
+      - name: Compile CI-shimmed Samsung baseline (AOSP Clang 10 + Android GCC 4.9 linker; NOT FLASHABLE)
+        run: |
+          set -euo pipefail
+          export ANDROID_GCC49_PREFIX="$PWD/_toolchains/android-gcc-4.9/bin/aarch64-linux-android-"
+          export SAMSUNG_COMPILER_PROFILE=aosp-clang10
+          export AOSP_CLANG10_BINARY="$PWD/_toolchains/aosp-clang10/clang-r370808/bin/clang"
+          bash scripts/compile_samsung_baseline.sh "$PWD/_samsung/kernel" "$PWD/_out" "$PWD/_evidence"
+
+      - name: Publish logs, configuration, and raw kernel if built
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SM-P613-AOSP-CLANG10-NOT-OEM-NOT-FLASHABLE
+          path: |
+            _evidence/
+            _out/.config
+            _out/arch/arm64/boot/Image
+            _out/Module.symvers
+            _out/System.map
+            _out/arch/arm64/boot/dts/**/*.dtb
+            _out/arch/arm64/boot/dts/**/*.dtbo
+            _out/**/*.ko
+            _signed_modules/lib/modules/*/kernel/**/*.ko
+          if-no-files-found: warn
+          retention-days: 14

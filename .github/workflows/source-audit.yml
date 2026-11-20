@@ -1,0 +1,48 @@
+name: Source compatibility audit
+on:
+  push:
+    branches: [main, agent/kernel-foundation]
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/**'
+      - 'docs/**'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout tooling
+        uses: actions/checkout@v4
+
+      - name: Fetch pinned community source metadata (not stock firmware)
+        run: |
+          set -euo pipefail
+          mkdir -p audit-output
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://raw.githubusercontent.com/gta4xlve-dev/android_kernel_samsung_gta4xlve/ef3c0a5dd63453bcc85e67b6a9feae17c3c8808b/Makefile" \
+            -o audit-output/Makefile
+
+      - name: Compare source with actual SM-P613 kernel
+        run: |
+          python3 scripts/audit_kernel.py \
+            --makefile audit-output/Makefile \
+            --reference "gta4xlve-dev/android_kernel_samsung_gta4xlve@ef3c0a5dd63453bcc85e67b6a9feae17c3c8808b" \
+            --expected "4.14.190" \
+            --output audit-output/result.json \
+            --markdown audit-output/summary.md
+          cat audit-output/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload audit evidence (not flashable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-audit-NOT-FLASHABLE
+          path: |
+            audit-output/result.json
+            audit-output/summary.md
+          retention-days: 30

@@ -1,0 +1,113 @@
+name: Samsung SM-P613 Android libufdt overlay audit (research ONLY)
+
+on:
+  push:
+    branches: [agent/kernel-foundation]
+    paths:
+      - '.github/workflows/samsung-ufdt-overlay-audit.yml'
+  workflow_dispatch:
+    inputs:
+      baseline_run_id:
+        description: 'Completed stock research run whose DTB/DTBO artifact is available'
+        required: false
+        default: '43398430871'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  overlay-compare:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host libfdt compiler dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential libfdt-dev device-tree-compiler
+
+      - name: Download a completed experimental kernel artifact and pin actual stock-tree hashes
+        run: |
+          set -euo pipefail
+          mkdir -p _artifact _evidence
+          RUN_ID="${{ inputs.baseline_run_id || '43398430871' }}"
+          echo "SOURCE_RESEARCH_RUN_ID=$RUN_ID" > _evidence/provenance.txt
+          echo 'TARGET=P613XXS8CYE1; SOURCE=P613XXU4CWL1' >> _evidence/provenance.txt
+          echo 'FLASH_ALLOWED=NO' >> _evidence/provenance.txt
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name SM-P613-AOSP-CLANG10-NOT-OEM-NOT-FLASHABLE \
+            --dir _artifact
+          readonly BASE='_artifact/_out/arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb'
+          readonly OVERLAY='_artifact/_out/arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo'
+          test -s "$BASE"
+          test -s "$OVERLAY"
+          printf '%s  %s\n' e198bad6723d6020442aa7d23c1d361720551735049bbd56ffed75e4fdc83816 "$BASE" | sha256sum -c -
+          printf '%s  %s\n' aa9a690ff42e85281929186513cfe960847f8c63e9d8dfa63ca5c7ae0ef67d12 "$OVERLAY" | sha256sum -c -
+          echo 'STOCK_DTB_DTBO_BINARY_PARITY=VERIFIED' | tee -a _evidence/provenance.txt
+
+      - name: Fetch official Android libufdt from a pinned source commit
+        run: |
+          set -euo pipefail
+          readonly PIN='c2169a1cb29bf0f5494f4e8b67ef662918e66679'
+          git init _libufdt
+          git -C _libufdt remote add origin https://android.googlesource.com/platform/system/libufdt
+          git -C _libufdt -c protocol.version=2 fetch --depth 1 origin "$PIN"
+          test "$(git -C _libufdt rev-parse FETCH_HEAD^{commit})" = "$PIN"
+          git -C _libufdt checkout --detach "$PIN"
+          test "$(git -C _libufdt rev-parse HEAD)" = "$PIN"
+          echo "AOSP_LIBUFDT_SOURCE_COMMIT=$PIN" | tee -a _evidence/provenance.txt
+
+      - name: Build Android host ufdt_apply_overlay (no Android SDK or tablet required)
+        run: |
+          set -euo pipefail
+          mkdir -p _build
+          cc -O2 -Wall -Werror -std=gnu11 \
+            -I_libufdt/include -I_libufdt/sysdeps/include -I_libufdt/tests/src \
+            _libufdt/ufdt_overlay.c \
+            _libufdt/ufdt_convert.c \
+            _libufdt/ufdt_node.c \
+            _libufdt/ufdt_node_pool.c \
+            _libufdt/ufdt_prop_dict.c \
+            _libufdt/sysdeps/libufdt_sysdeps_posix.c \
+            _libufdt/tests/src/ufdt_overlay_test_app.c \
+            _libufdt/tests/src/util.c \
+            -lfdt -o _build/ufdt_apply_overlay \
+            2>&1 | tee _evidence/ufdt-host-compile.log
+          echo 'ANDROID_LIBUFDT_HOST_COMPILE=SUCCESS' | tee -a _evidence/provenance.txt
+          sha256sum _build/ufdt_apply_overlay >> _evidence/provenance.txt
+
+      - name: Compare standard libfdt and Android libufdt against exact stock-matching trees
+        run: |
+          set -euo pipefail
+          BASE='_artifact/_out/arch/arm64/boot/dts/qcom/atoll-ab-idp.dtb'
+          OVERLAY='_artifact/_out/arch/arm64/boot/dts/samsung/atoll-sec-gta4xlvewifi-eur-overlay-r00.dtbo'
+          set +e
+          fdtoverlay -i "$BASE" -o _evidence/NONFLASHABLE-libfdt-merge.dtb "$OVERLAY" > _evidence/libfdt-merge.log 2>&1
+          libfdt_exit=$?
+          _build/ufdt_apply_overlay "$BASE" "$OVERLAY" _evidence/NONFLASHABLE-libufdt-merge.dtb > _evidence/libufdt-merge.log 2>&1
+          libufdt_exit=$?
+          set -e
+          echo "STANDARD_LIBFDT_EXIT=$libfdt_exit" | tee -a _evidence/provenance.txt
+          echo "ANDROID_LIBUFDT_EXIT=$libufdt_exit" | tee -a _evidence/provenance.txt
+          if (( libufdt_exit != 0 )) || [[ ! -s _evidence/NONFLASHABLE-libufdt-merge.dtb ]]; then
+            echo "::error::Pinned Android libufdt failed to merge the exact source/stock-matching trees; inspect captured logs."
+            exit 1
+          fi
+          fdtget -t s _evidence/NONFLASHABLE-libufdt-merge.dtb / compatible | tee _evidence/libufdt-merged-compatible.txt
+          sha256sum _evidence/NONFLASHABLE-libufdt-merge.dtb >> _evidence/provenance.txt
+          echo 'ANDROID_LIBUFDT_MERGE=SUCCESS_OFFLINE_ONLY_NO_BOOT_PROOF' | tee -a _evidence/provenance.txt
+
+      - name: Publish diagnostics and nonflashable merged DTB
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SM-P613-ANDROID-LIBUFDT-AUDIT-NOT-FLASHABLE
+          path: _evidence/
+          if-no-files-found: warn
+          retention-days: 14
