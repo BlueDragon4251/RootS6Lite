@@ -339,10 +339,13 @@ observation without upgrading it to an independent `getenforce` measurement.
 calling context, not a global kernel setting; the actual build still has
 `CONFIG_SECCOMP=y` and `CONFIG_SECCOMP_FILTER=y`.
 
-A matching, unchanged official UAPI-6 development APK was found and validated
-without rebuilding the kernel or changing manager trust. Full source/artefact,
-signature, interface and update-side-effect evidence is recorded in
+An official, signed UAPI-6 development APK was cryptographically validated,
+but its versionCode **33554 is lower than the installed stable manager's
+33355**. Consequently it is **not** an eligible ordinary in-place update.
+The earlier in-place-update recommendation was corrected in
 [the manager validation report](CYE1_MANAGER_UAPI6_VALIDATION_2026-11-20.md).
-The next device step is an in-place manager update and a new complete status
-screenshot, not another Odin flash. Root, OEM-module loading and stability
+**Do not uninstall the current manager, attempt a forced downgrade or flash
+another kernel to resolve this UI warning.** Preserve the first successful
+no-hide boot and seek a newer officially signed UAPI-6 APK with a compatible
+versionCode before any manager update. Root, OEM-module loading and stability
 remain separate pending checks. Both failed KSU Images remain blocked.
